@@ -1,5 +1,7 @@
+// app/api/opsec/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { Address, isAddress } from "viem";
+import { isAddress } from "viem";
+import type { Address } from "viem";
 import { fetchBaseScan, fetchDexScreener, fetchGoPlus, fetchHoneypot, resolveName } from "@/lib/opsec/sources";
 import { computeReport } from "@/lib/opsec/score";
 
@@ -15,11 +17,13 @@ export async function GET(req: NextRequest) {
     fetchBaseScan(address),
     fetchDexScreener(address),
     fetchGoPlus(address),
-    fetchHoneypot(address)
+    fetchHoneypot(address),
   ]);
 
   const report = await computeReport(address, { bs, dx, gp, hp });
-  report.imageUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/api/opsec/og?grade=${report.grade}&name=${encodeURIComponent(report.symbol ?? report.name ?? "Token")}`;
+  report.imageUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/api/opsec/og?grade=${report.grade}&name=${encodeURIComponent(
+    report.symbol ?? report.name ?? "Token"
+  )}`;
   report.permalink = `${process.env.NEXT_PUBLIC_SITE_URL}/opsec/${address}`;
 
   return NextResponse.json(report, { headers: { "Cache-Control": "no-store" } });
