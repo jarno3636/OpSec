@@ -27,11 +27,13 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const renounced = isZeroAddress(ownerAddr) || isDeadAddress(ownerAddr);
   findings.push(P(renounced, 8, renounced ? "Ownership renounced/0xdead" : `Owner retains privileges: ${ownerAddr}`, "owner"));
 
-  // GoPlus flags
-  const gpRec = first(gpToArr(raw.gp));
+  // GoPlus flags (cast to any to avoid TS {} property errors)
+  const gpRec: any = first(gpToArr(raw.gp)) as any;
   if (gpRec) {
     const hasBlacklist = anyTrue([gpRec?.can_blacklist, gpRec?.is_blacklisted, gpRec?.is_anti_whale, gpRec?.is_whitelisted]);
-    findings.push(P(!hasBlacklist, 6, hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls", "blacklist"));
+    findings.push(
+      P(!hasBlacklist, 6, hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls", "blacklist")
+    );
   }
 
   /* ---------- SUPPLY & HOLDERS ---------- */
@@ -57,14 +59,13 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   /* ---------- LIQUIDITY ---------- */
   const mainPair = pickMainPair(raw.dx);
   if (mainPair) {
-    const liqUSD = mainPair?.liquidity?.usd ?? 0;
-    metrics.liquidityUSD = liqUSD;
-    // Only grade liquidity if we have a numeric value (0 is allowed; it’s just a low score)
-    if (typeof liqUSD === "number") {
+    const liqUSD = Number(mainPair?.liquidity?.usd ?? 0);
+    if (!Number.isNaN(liqUSD)) {
+      metrics.liquidityUSD = liqUSD;
       findings.push(P(liqUSD >= 50_000, 10, `Liquidity ~$${Math.round(liqUSD).toLocaleString()}`, "liquidity_depth"));
     }
 
-    // LP lock signal (requires GoPlus)
+    // LP lock & recent pulls (requires GoPlus)
     if (gpRec) {
       const lpLocked =
         parseBool(gpRec?.is_in_dex) &&
@@ -80,8 +81,7 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   if (mainPair && mainPair?.txns?.h24) {
     const buy = Number(mainPair?.txns?.h24?.buys ?? 0);
     const sell = Number(mainPair?.txns?.h24?.sells ?? 0);
-
-    if (buy || sell) {
+    if (Number.isFinite(buy) && Number.isFinite(sell)) {
       const ratioOk = sell === 0 ? buy > 0 : buy / sell >= 0.5 && buy / sell <= 2.0;
       metrics.buySellRatio = sell === 0 ? "∞" : (buy / sell).toFixed(2);
       findings.push(P(ratioOk, 6, ratioOk ? "Balanced 24h buy/sell" : "Skewed 24h order flow", "buy_sell_ratio"));
@@ -90,7 +90,7 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
 
   if (gpRec) {
     const taxSwing = Number(gpRec?.sell_tax ?? 0) - Number(gpRec?.buy_tax ?? 0);
-    const taxSwingOk = Math.abs(taxSwing) <= 10;
+    const taxSwingOk = Number.isFinite(taxSwing) && Math.abs(taxSwing) <= 10;
     findings.push(P(taxSwingOk, 4, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
   }
 
@@ -111,10 +111,8 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const score = scoreFromFindings(findings);
   const grade = scoreToGrade(score);
 
-  // top 6 most weighty
   const summary = findings.slice().sort((a, b) => b.weight - a.weight).slice(0, 6);
 
-  // Name/symbol
   const name = srcRec?.ContractName || mainPair?.baseToken?.name;
   const symbol = srcRec?.Symbol || mainPair?.baseToken?.symbol;
 
@@ -182,9 +180,7 @@ const DEAD = "0x000000000000000000000000000000000000dEaD";
 function isZeroAddress(a?: string) { return (a || "").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
 function isDeadAddress(a?: string) { return (a || "").toLowerCase() === DEAD.toLowerCase(); }
 
-function hTokenQty(h: any): number | string | undefined {
-  return h?.TokenHolderQuantity ?? h?.Balance ?? 0;
-}
+function hTokenQty(h: any): number | string | undefined { return h?.TokenHolderQuantity ?? h?.Balance ?? 0; }
 function approxTeamPct(holders: any[]): number {
   const interesting = holders.filter((h: any) => /owner|team|marketing|deployer|contract/i.test(h?.TokenHolderAddress || ""));
   const tot = sum(holders.map((h: any) => Number(hTokenQty(h))));
