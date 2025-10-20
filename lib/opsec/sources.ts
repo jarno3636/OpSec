@@ -1,182 +1,107 @@
 // lib/opsec/sources.ts
 import type { Address } from "viem";
 
-const TIMEOUT = Number(process.env.FETCH_TIMEOUT_MS || 12_000);
-const RETRIES = 2; // total attempts = 1 + RETRIES
+const TIMEOUT = Number(process.env.FETCH_TIMEOUT_MS || 12000);
 
-/* ---------------- core HTTP helpers ---------------- */
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
-async function fetchWithTimeout(url: string, init?: RequestInit) {
+async function j(url: string, init?: RequestInit) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), TIMEOUT);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
+    const r = await fetch(url, {
+      ...init,
+      signal: ctrl.signal,
+      headers: {
+        "Accept": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      // Avoid caching on the edge for freshness
+      cache: "no-store",
+    });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    return await r.json();
   } finally {
     clearTimeout(id);
   }
 }
 
-function shouldRetry(status: number) {
-  // retry on timeouts (status 0), 429, and 5xx
-  return status === 0 || status === 429 || (status >= 500 && status <= 599);
-}
-
-/** Soft JSON fetch with retries + jitter. Never throws. */
-async function jSoft<T = any>(
-  url: string,
-  init?: RequestInit,
-  label?: string,
-  retries: number = RETRIES
-): Promise<{ ok: boolean; status: number; data?: T; error?: string }> {
-  let attempt = 0;
-  while (true) {
-    attempt++;
-    try {
-      const res = await fetchWithTimeout(url, init);
-      const status = res.status;
-      let data: any = undefined;
-      try {
-        data = await res.json();
-      } catch {
-        const txt = await res.text().catch(() => "");
-        if (txt) data = { raw: txt };
-      }
-      if (!res.ok) {
-        const error = (label ? `${label}: ` : "") + `HTTP ${status}`;
-        if (attempt <= retries + 1 && shouldRetry(status)) {
-          const jitter = Math.random() * 250;
-          await sleep(300 * attempt + jitter);
-          continue;
-        }
-        return { ok: false, status, data, error };
-      }
-      return { ok: true, status, data };
-    } catch (e: any) {
-      const error = (label ? `${label}: ` : "") + (e?.name === "AbortError" ? "timeout" : (e?.message || "fetch failed"));
-      if (attempt <= retries + 1) {
-        const jitter = Math.random() * 250;
-        await sleep(300 * attempt + jitter);
-        continue;
-      }
-      return { ok: false, status: 0, error };
-    }
-  }
-}
-
-/* ---------------- BaseScan (Etherscan-compatible) ---------------- */
+/* ---------- BaseScan (Etherscan-compatible) ---------- */
 export async function fetchBaseScan(addr: Address) {
-  const key = process.env.BASESCAN_KEY || process.env.BASESCAN_API_KEY || "";
+  const key = process.env.BASESCAN_KEY || "";
   const base = "https://api.basescan.org/api";
   const q = (p: Record<string, string>) =>
     base + "?" + new URLSearchParams({ ...p, apikey: key }).toString();
 
-  const [sourceR, tokeninfoR] = await Promise.all([
-    jSoft(q({ module: "contract", action: "getsourcecode", address: addr }), undefined, "BaseScan:source"),
-    jSoft(q({ module: "token", action: "tokeninfo", contractaddress: addr }), undefined, "BaseScan:tokeninfo"),
-  ]);
+  // Contract source / ABI / proxy meta
+  const source = await j(
+    q({ module: "contract", action: "getsourcecode", address: addr })
+  ).catch(() => undefined);
 
-  // Holders: some explorers gate this; try BaseScan first, then Covalent (if key provided)
-  let holders: any = { result: [] };
-  const holdersR = await jSoft(q({
-    module: "token",
-    action: "tokenholderlist",
-    contractaddress: addr,
-    page: "1",
-    offset: "100",
-  }), undefined, "BaseScan:holders");
+  // Top 100 holders (some plans return empty; we handle gracefully)
+  const holders = await j(
+    q({
+      module: "token",
+      action: "tokenholderlist",
+      contractaddress: addr,
+      page: "1",
+      offset: "100",
+    })
+  ).catch(() => ({ result: [] }));
 
-  if (holdersR.ok && (holdersR.data as any)?.result) {
-    holders = holdersR.data;
-  } else {
-    const cov = await covalentHoldersFallback(addr);
-    if (cov) holders = cov;
-  }
+  // Token info (very reliable for name & symbol)
+  const tokeninfo = await j(
+    q({ module: "token", action: "tokeninfo", contractaddress: addr })
+  ).catch(() => undefined);
 
-  return {
-    source: sourceR.data ?? null,
-    holders,
-    tokeninfo: tokeninfoR.data ?? null,
-    _errors: [sourceR, holdersR].filter(x => !x.ok).map(x => x.error).filter(Boolean) as string[],
-  };
+  return { source, holders, tokeninfo };
 }
 
-/* ---- Covalent fallback for holders (optional) ----
-   Set COVALENT_API_KEY to enable this. */
-async function covalentHoldersFallback(addr: Address) {
-  const key = process.env.COVALENT_API_KEY;
-  if (!key) return null;
-  const url = `https://api.covalenthq.com/v1/8453/tokens/${addr}/token_holders/?page-size=200&key=${encodeURIComponent(key)}`;
-  const r = await jSoft(url, undefined, "Covalent:holders");
-  if (!r.ok) return null;
-  // Normalize into BaseScan-like { result: [{ TokenHolderAddress, TokenHolderQuantity }] }
-  const items = (r.data as any)?.data?.items ?? [];
-  const result = items.map((it: any) => ({
-    TokenHolderAddress: it.address,
-    TokenHolderQuantity: `${it.balance || it.balance_wei || 0}`,
-  }));
-  return { result };
-}
-
-/* ---------------- DEX Screener (+ GeckoTerminal fallback) ---------------- */
+/* ---------- DEX Screener (pairs/liquidity/txns) ---------- */
 export async function fetchDexScreener(addr: Address) {
-  // Primary
-  const ds = await jSoft(`https://api.dexscreener.com/latest/dex/tokens/${addr}`, { headers: { Accept: "application/json" } }, "DEXScreener");
-  if (ds.ok) {
-    const pairs = (ds.data as any)?.pairs ?? [];
-    return { pairs, _errors: [] as string[] };
+  // 1) Try the token endpoint
+  const primary = await j(
+    `https://api.dexscreener.com/latest/dex/tokens/${addr}`
+  ).catch(() => undefined);
+
+  // 2) If no pairs or no Base pair, fall back to search
+  let pairs: any[] = primary?.pairs ?? [];
+  if (!Array.isArray(pairs) || !pairs.length || !pairs.some((p) => p?.chainId === "base")) {
+    const search = await j(
+      `https://api.dexscreener.com/latest/dex/search?q=${addr}`
+    ).catch(() => undefined);
+    const spairs: any[] = search?.pairs ?? [];
+    // keep only Base pairs if present, else keep all
+    const basePairs = spairs.filter((p: any) => p?.chainId === "base");
+    pairs = basePairs.length ? basePairs : spairs;
   }
-
-  // Fallback: GeckoTerminal (public, rate-limited). Try to include top pools.
-  const gt = await jSoft(
-    `https://api.geckoterminal.com/api/v2/networks/base/tokens/${addr}?include=top_pools`,
-    { headers: { Accept: "application/json" } },
-    "GeckoTerminal"
-  );
-
-  if (gt.ok) {
-    // Normalize into DexScreener-like {pairs: [{ liquidity: {usd}, txns:{h24:{buys,sells}}, baseToken:{name,symbol} }]}
-    const data = (gt.data as any)?.data;
-    const included = (gt.data as any)?.included ?? [];
-    const tokenAttrs = data?.attributes || {};
-    const pools = included.filter((i: any) => i.type === "pool");
-    const pairs = pools.map((p: any) => {
-      const la = p.attributes || {};
-      return {
-        chainId: "base",
-        liquidity: { usd: Number(la.reserve_in_usd || 0) },
-        txns: { h24: { buys: Number(la.transactions_24h?.buy_count || 0), sells: Number(la.transactions_24h?.sell_count || 0) } },
-        baseToken: { name: tokenAttrs?.name, symbol: tokenAttrs?.symbol },
-      };
-    });
-    return { pairs, _errors: [ds.error!].filter(Boolean) as string[] };
-  }
-
-  return { pairs: [], _errors: [ds.error!, gt.error!].filter(Boolean) as string[] };
+  return { pairs };
 }
 
-/* ---------------- GoPlus (token security, taxes, flags) ---------------- */
+/* ---------- GoPlus (token security, lockers, taxes, flags) ---------- */
 export async function fetchGoPlus(addr: Address) {
-  const key = process.env.GOPLUS_API_KEY || "";
   const url = `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`;
   const headers: HeadersInit = {};
-  if (key) { headers["Authorization"] = key; headers["X-API-KEY"] = key; }
-  const r = await jSoft(url, { headers }, "GoPlus");
-  return r.ok ? (r.data as any) : { result: {}, _errors: [r.error].filter(Boolean) };
+  if (process.env.GOPLUS_API_KEY) headers["Authorization"] = process.env.GOPLUS_API_KEY!;
+  return await j(url, { headers }).catch(() => undefined);
 }
 
-/* ---------------- Honeypot.is (no key needed) ---------------- */
+/* ---------- Honeypot.is ---------- */
 export async function fetchHoneypot(addr: Address) {
+  // Public key is optional; endpoint works without it
   const url = `https://api.honeypot.is/v2/IsHoneypot?chain=base&address=${addr}`;
-  const r = await jSoft(url, undefined, "Honeypot.is");
-  return r.ok ? (r.data as any) : { ok: false, _errors: [r.error].filter(Boolean) };
+  return await j(url).catch(() => undefined);
 }
 
-/* ---------------- Resolve name/symbol → address (Base) ---------------- */
-export async function resolveName(qStr: string): Promise<Address> {
-  const r = await jSoft(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(qStr)}`, undefined, "DEXScreener:search");
-  const firstBase =
-    (r.data as any)?.pairs?.find((p: any) => p?.chainId === "base" && p?.baseToken?.address)?.baseToken?.address;
-  if (!firstBase) throw new Error("Could not resolve a Base token from that query.");
-  return firstBase as Address;
+/* ---------- Resolve name/symbol → address (Base) ---------- */
+export async function resolveName(q: string): Promise<Address> {
+  const s = await j(
+    `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`
+  );
+  // Prefer Base, then anything
+  const basePick =
+    s?.pairs?.find((p: any) => p?.chainId === "base" && p?.baseToken?.address)?.baseToken?.address;
+  const anyPick = s?.pairs?.[0]?.baseToken?.address;
+  const resolved = (basePick || anyPick) as string | undefined;
+  if (!resolved) throw new Error("Could not resolve a token on Base from search.");
+  // Coerce to Address (Next runtime already validates in route)
+  return resolved as Address;
 }
