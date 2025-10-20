@@ -1,35 +1,52 @@
 // lib/opsec/http.ts
-const DEFAULT_TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 12000);
 
-export async function fetchJson<T = any>(
+type Jsonish = Record<string, any> | any[];
+
+export type FetchResult<T extends Jsonish = any> = {
+  ok: boolean;
+  status: number;
+  ms: number;
+  data?: T;
+  error?: string;
+};
+
+export async function fetchJSON<T extends Jsonish = any>(
   url: string,
   init: RequestInit = {},
-  { timeoutMs = DEFAULT_TIMEOUT_MS, label }: { timeoutMs?: number; label?: string } = {}
-): Promise<{ ok: boolean; data?: T; status: number; error?: string }> {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  { retries = 2, timeout = TIMEOUT_MS }: { retries?: number; timeout?: number } = {}
+): Promise<FetchResult<T>> {
+  let lastErr: string | undefined;
 
-  try {
-    const res = await fetch(url, { ...init, signal: ctl.signal });
-    const status = res.status;
-    let data: any = undefined;
-
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const t0 = Date.now();
+    const timer = setTimeout(() => ctrl.abort(), timeout);
     try {
-      data = await res.json();
-    } catch {
-      // some endpoints return text on errors—don’t throw
-      const txt = await res.text().catch(() => "");
-      if (txt) data = { raw: txt };
-    }
+      const r = await fetch(url, { ...init, signal: ctrl.signal });
+      const ms = Date.now() - t0;
+      clearTimeout(timer);
 
-    if (!res.ok) {
-      return { ok: false, status, error: `HTTP ${status} from ${label || url}`, data };
+      const text = await r.text();
+      let data: any;
+      try { data = text ? JSON.parse(text) : undefined; } catch { data = text; }
+
+      // Etherscan-style “NOTOK” or rate-limit must be treated as non-fatal but not ok
+      const etherscanNotOK = typeof data === "object" && data?.status === "0" && data?.message === "NOTOK";
+
+      return {
+        ok: r.ok && !etherscanNotOK,
+        status: r.status,
+        ms,
+        data,
+        error: r.ok ? (etherscanNotOK ? data?.result || "NOTOK" : undefined) : `${r.status} ${r.statusText}`,
+      };
+    } catch (e: any) {
+      clearTimeout(timer);
+      lastErr = e?.name === "AbortError" ? "timeout" : (e?.message || "request_failed");
+      // backoff
+      if (attempt < retries) await new Promise(res => setTimeout(res, 250 * (attempt + 1)));
     }
-    return { ok: true, status, data };
-  } catch (e: any) {
-    const msg = e?.name === "AbortError" ? "timeout" : (e?.message || "fetch failed");
-    return { ok: false, status: 0, error: `${label || url}: ${msg}` };
-  } finally {
-    clearTimeout(t);
   }
+  return { ok: false, status: 0, ms: 0, error: lastErr || "request_failed" };
 }
