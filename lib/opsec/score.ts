@@ -38,13 +38,11 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
 
   /* ---------- SUPPLY & HOLDERS ---------- */
   const holderList: any[] = raw.bs?.holders?.result ?? [];
-  const holderDataOk = Array.isArray(holderList) && holderList.length > 0;
-
-  if (holderDataOk) {
+  if (Array.isArray(holderList) && holderList.length > 0) {
     const total = sum(holderList.map((h: any) => Number(hTokenQty(h))));
     const top = Number(hTokenQty(holderList?.[0]) || 0);
-    const topPct = total > 0 ? pct(top, total) : undefined;
-    if (typeof topPct === "number") {
+    if (total > 0) {
+      const topPct = pct(top, total);
       metrics.topHolderPct = topPct;
       findings.push(P(topPct < 20, 8, `Top holder ${topPct.toFixed(1)}%`, "holder_concentration"));
     }
@@ -60,12 +58,11 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const mainPair = pickMainPair(raw.dx);
   if (mainPair) {
     const liqUSD = Number(mainPair?.liquidity?.usd ?? 0);
-    if (!Number.isNaN(liqUSD)) {
+    if (Number.isFinite(liqUSD)) {
       metrics.liquidityUSD = liqUSD;
       findings.push(P(liqUSD >= 50_000, 10, `Liquidity ~$${Math.round(liqUSD).toLocaleString()}`, "liquidity_depth"));
     }
 
-    // LP lock & recent pulls (requires GoPlus)
     if (gpRec) {
       const lpLocked =
         parseBool(gpRec?.is_in_dex) &&
@@ -78,7 +75,7 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   }
 
   /* ---------- MARKET BEHAVIOR ---------- */
-  if (mainPair && mainPair?.txns?.h24) {
+  if (mainPair?.txns?.h24) {
     const buy = Number(mainPair?.txns?.h24?.buys ?? 0);
     const sell = Number(mainPair?.txns?.h24?.sells ?? 0);
     if (Number.isFinite(buy) && Number.isFinite(sell)) {
@@ -90,8 +87,7 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
 
   if (gpRec) {
     const taxSwing = Number(gpRec?.sell_tax ?? 0) - Number(gpRec?.buy_tax ?? 0);
-    const taxSwingOk = Number.isFinite(taxSwing) && Math.abs(taxSwing) <= 10;
-    findings.push(P(taxSwingOk, 4, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
+    if (Number.isFinite(taxSwing)) findings.push(P(Math.abs(taxSwing) <= 10, 4, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
   }
 
   /* ---------- SECURITY SIGNALS ---------- */
@@ -110,11 +106,12 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   /* ---------- SCORE/grade ---------- */
   const score = scoreFromFindings(findings);
   const grade = scoreToGrade(score);
-
   const summary = findings.slice().sort((a, b) => b.weight - a.weight).slice(0, 6);
 
-  const name = srcRec?.ContractName || mainPair?.baseToken?.name;
-  const symbol = srcRec?.Symbol || mainPair?.baseToken?.symbol;
+  // Prefer BaseScan tokeninfo for reliable identity
+  const ti = raw.bs?.tokeninfo?.result?.[0] ?? {};
+  const name = ti?.tokenName || srcRec?.ContractName || mainPair?.baseToken?.name;
+  const symbol = ti?.tokenSymbol || srcRec?.Symbol || mainPair?.baseToken?.symbol;
 
   return {
     address,
@@ -156,10 +153,15 @@ function sum(a: number[]) { return a.reduce((x, y) => x + y, 0); }
 function pickMainPair(dx: any) {
   const pairs = dx?.pairs ?? [];
   if (!pairs.length) return undefined;
+  // Prefer Base chain & highest liquidity
   return (
     pairs
-      .filter((p: any) => (p?.chainId ?? "").toString().toLowerCase() === "base")
-      .sort((a: any, b: any) => (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0))[0] ?? pairs[0]
+      .sort((a: any, b: any) => {
+        const ab = a?.chainId === "base" ? 1 : 0;
+        const bb = b?.chainId === "base" ? 1 : 0;
+        if (ab !== bb) return bb - ab; // put base first
+        return (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0);
+      })[0]
   );
 }
 
@@ -171,9 +173,7 @@ async function guessOwner(addr: Address): Promise<string> {
     try {
       const owner2: string = await (baseClient as any).readContract({ address: addr, abi: ERC20 as any, functionName: "getOwner" });
       return owner2;
-    } catch {
-      return "0x0000000000000000000000000000000000000000";
-    }
+    } catch { return "0x0000000000000000000000000000000000000000"; }
   }
 }
 const DEAD = "0x000000000000000000000000000000000000dEaD";
