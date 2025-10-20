@@ -8,6 +8,17 @@ import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
 import ShareRow from "@/components/ShareRow";
 
+export const metadata = {
+  title: "OpSec — Analyze a Base token",
+  description: "Paste a Base token contract address and run OpSec due-diligence.",
+  other: {
+    "fc:frame": "vNext",
+    "fc:frame:image": "/api/opsec/og?grade=A&name=OpSec",
+    "fc:frame:button:1": "Analyze a Token",
+    "fc:frame:button:1:action": "link",
+    "fc:frame:button:1:target": "/opsec",
+  },
+};
 export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
