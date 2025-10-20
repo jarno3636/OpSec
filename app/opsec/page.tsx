@@ -1,11 +1,12 @@
+// app/opsec/page.tsx
 "use client";
 import { useCallback, useState } from "react";
 import AgencyChrome from "@/components/AgencyChrome";
 import ScoreBadge from "@/components/ScoreBadge";
 import { KeyValue } from "@/components/KeyValue";
-import OpSecShare from "@/components/OpSecShare";
 import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
+import ShareRow from "@/components/ShareRow";
 
 export default function Page() {
   const [q, setQ] = useState("");
@@ -21,7 +22,7 @@ export default function Page() {
     }
     setErr(null);
     setLoading(true);
-    setR(null);
+    setR(null); // clear previous result immediately for better UX
     try {
       const res = await fetch(`/api/opsec/analyze?query=${encodeURIComponent(query)}`, { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
@@ -41,11 +42,12 @@ export default function Page() {
   return (
     <AgencyChrome>
       <div className="mx-auto max-w-5xl px-4">
-        <header className="mb-6 text-center md:text-left">
+        <header className="mb-6 text-center">
           <h1 className="text-4xl font-black">OPSEC</h1>
           <p className="text-white/70">Professional token due-diligence on Base</p>
         </header>
 
+        {/* QUERY BAR */}
         <div className="flex flex-col sm:flex-row gap-2 mb-3">
           <input
             className="flex-1 rounded-xl px-4 py-3 bg-white/5 border border-white/10 placeholder:text-white/40"
@@ -59,7 +61,7 @@ export default function Page() {
           />
           <button
             onClick={analyze}
-            disabled={loading}
+            disabled={loading || !q.trim()}
             className="px-4 py-3 rounded-xl bg-scan text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {loading && <Spinner size={16} />}
@@ -67,7 +69,8 @@ export default function Page() {
           </button>
         </div>
 
-        <div className="min-h-[1.5rem] mb-4">
+        {/* STATUS / ERROR */}
+        <div className="min-h-[1.5rem] mb-4 text-center">
           {loading && (
             <span className="inline-flex items-center gap-2 text-xs text-white/80 px-3 py-1 rounded-lg border border-white/10 bg-white/5">
               <Spinner size={14} />
@@ -81,11 +84,14 @@ export default function Page() {
           )}
         </div>
 
+        {/* RESULT */}
         {r && (
-          <section className="rounded-2xl border border-white/10 p-4 space-y-4 overflow-hidden">
+          <section className="mx-auto max-w-3xl rounded-2xl border border-white/10 p-4 space-y-4 overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div className="text-center md:text-left">
-                <div className="text-xl font-bold break-all font-mono">{r.name ?? r.symbol ?? r.address}</div>
+                <div className="text-xl font-bold break-all font-mono">
+                  {r.name ?? r.symbol ?? r.address}
+                </div>
                 <div className="text-white/60 text-sm break-all font-mono">{r.address}</div>
               </div>
               <div className="self-center">
@@ -109,23 +115,33 @@ export default function Page() {
                 <KeyValue k="Score" v={`${r.score}/100`} />
                 <KeyValue
                   k="Liquidity (USD)"
-                  v={typeof r.metrics.liquidityUSD === "number" ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}` : "—"}
+                  v={
+                    typeof r.metrics.liquidityUSD === "number"
+                      ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
+                      : "—"
+                  }
                 />
                 <KeyValue
                   k="Top Holder %"
-                  v={typeof r.metrics.topHolderPct === "number" ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%` : "—"}
+                  v={
+                    typeof r.metrics.topHolderPct === "number"
+                      ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
+                      : "—"
+                  }
                 />
                 <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
               </div>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
-              <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
+              <span className="text-xs text-white/50">
+                Sources: BaseScan, GoPlus, DEX Screener, Honeypot
+              </span>
               <div className="self-start md:self-auto">
-                <OpSecShare
-                  summary={`OPSEC: ${r.symbol ?? r.name ?? ""} — Grade ${r.grade} on Base`}
-                  imageUrl={r.imageUrl}
-                  siteUrl={r.permalink}
+                <ShareRow
+                  summary={`OPSEC: ${r.symbol ?? r.name ?? r.address} — Grade ${r.grade} (Base)`}
+                  url={r.permalink}
+                  image={r.imageUrl}
                 />
               </div>
             </div>
