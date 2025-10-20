@@ -2,7 +2,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress } from "viem";
 import type { Address } from "viem";
-import { fetchBaseScan, fetchDexScreener, fetchGoPlus, fetchHoneypot, resolveName } from "@/lib/opsec/sources";
+import {
+  fetchBaseScan,
+  fetchDexScreener,
+  fetchGoPlus,
+  fetchHoneypot,
+  resolveName,
+} from "@/lib/opsec/sources";
 import { computeReport } from "@/lib/opsec/score";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +30,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Call upstreams in parallel; each function soft-fails and returns a normalized shape
+    // Call upstreams in parallel; each has its own retries/fallbacks
     const [bs, dx, gp, hp] = await Promise.all([
       fetchBaseScan(address),
       fetchDexScreener(address),
@@ -34,25 +40,15 @@ export async function GET(req: NextRequest) {
 
     const report = await computeReport(address, { bs, dx, gp, hp } as any);
 
-    // Fill in sharing metadata (these are expected downstream)
+    // Fill in sharing metadata (these are used by the UI)
     const site = process.env.NEXT_PUBLIC_SITE_URL || "";
     report.imageUrl = `${site}/api/opsec/og?grade=${report.grade}&name=${encodeURIComponent(
       report.symbol ?? report.name ?? "Token"
     )}`;
     report.permalink = `${site}/opsec/${address}`;
 
-    // Surface non-fatal upstream errors for visibility (useful in client/devtools)
-    const upstreamErrors = [
-      ...(bs?._errors || []),
-      ...(dx?._errors || []),
-      ...(gp?._errors || []),
-      ...(hp?._errors || []),
-    ].filter(Boolean);
-
-    return NextResponse.json(
-      upstreamErrors.length ? { ...report, upstreamErrors } : report,
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    // Don’t type-assert debug fields; keep response clean & typed
+    return NextResponse.json(report, { headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
