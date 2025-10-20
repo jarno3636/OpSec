@@ -1,87 +1,137 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import AgencyChrome from "@/components/AgencyChrome";
 import ScoreBadge from "@/components/ScoreBadge";
 import { KeyValue } from "@/components/KeyValue";
 import OpSecShare from "@/components/OpSecShare";
+import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
 
 export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [r, setR] = useState<OpSecReport | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  const analyze = async () => {
+  const analyze = useCallback(async () => {
+    const query = q.trim();
+    if (!query) {
+      setErr("Please enter a Base token address or name/symbol.");
+      return;
+    }
+    setErr(null);
     setLoading(true);
-    const res = await fetch(`/api/opsec/analyze?query=${encodeURIComponent(q)}`, { cache: "no-store" });
-    const json = await res.json();
-    setR(json);
-    setLoading(false);
+    setR(null);
+    try {
+      const res = await fetch(`/api/opsec/analyze?query=${encodeURIComponent(query)}`, { cache: "no-store" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Request failed (${res.status})`);
+      }
+      const json: OpSecReport = await res.json();
+      setR(json);
+    } catch (e: any) {
+      setErr(e?.message || "Scan failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, [q]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") analyze();
   };
 
   return (
     <AgencyChrome>
-      <header className="mb-6">
-        <h1 className="text-4xl font-black">OPSEC</h1>
-        <p className="text-white/70">Professional token due-diligence on Base</p>
-      </header>
+      <div className="mx-auto max-w-5xl px-4">
+        <header className="mb-6 text-center md:text-left">
+          <h1 className="text-4xl font-black">OPSEC</h1>
+          <p className="text-white/70">Professional token due-diligence on Base</p>
+        </header>
 
-      <div className="flex gap-2 mb-4">
-        <input
-          className="flex-1 rounded-xl px-4 py-3 bg-white/5 border border-white/10"
-          placeholder="Paste Base token address or search by name/symbol"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button
-          onClick={analyze}
-          disabled={loading}
-          className="px-4 py-3 rounded-xl bg-scan text-black font-semibold"
-        >
-          {loading ? "Scanning…" : "Analyze"}
-        </button>
-      </div>
+        <div className="flex flex-col sm:flex-row gap-2 mb-3">
+          <input
+            className="flex-1 rounded-xl px-4 py-3 bg-white/5 border border-white/10 placeholder:text-white/40"
+            placeholder="Paste Base token address or search by name/symbol"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onKeyDown}
+            inputMode="text"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
+          <button
+            onClick={analyze}
+            disabled={loading}
+            className="px-4 py-3 rounded-xl bg-scan text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {loading && <Spinner size={16} />}
+            {loading ? "Scanning…" : "Analyze"}
+          </button>
+        </div>
 
-      {r && (
-        <section className="rounded-2xl border border-white/10 p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xl font-bold">{r.name ?? r.symbol ?? r.address}</div>
-              <div className="text-white/60 text-sm">{r.address}</div>
-            </div>
-            <ScoreBadge grade={r.grade} />
-          </div>
+        {/* Loading status / error */}
+        <div className="min-h-[1.5rem] mb-4">
+          {loading && (
+            <span className="inline-flex items-center gap-2 text-xs text-white/80 px-3 py-1 rounded-lg border border-white/10 bg-white/5">
+              <Spinner size={14} />
+              Running checks (BaseScan • GoPlus • DEX Screener • Honeypot)…
+            </span>
+          )}
+          {!loading && err && (
+            <span className="inline-flex items-center text-xs text-red-300 px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10">
+              {err}
+            </span>
+          )}
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-semibold mb-2">Summary</h3>
-              <div className="space-y-1 text-sm">
-                {r.summary.map((s, i) => (
-                  <div key={i} className={s.ok ? "text-green-400" : "text-red-400"}>
-                    {s.ok ? "✓" : "✗"} {s.note}
-                  </div>
-                ))}
+        {r && (
+          <section className="rounded-2xl border border-white/10 p-4 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-center md:text-left">
+                <div className="text-xl font-bold">{r.name ?? r.symbol ?? r.address}</div>
+                <div className="text-white/60 text-sm">{r.address}</div>
+              </div>
+              <div className="self-center">
+                <ScoreBadge grade={r.grade} />
               </div>
             </div>
-            <div>
-              <h3 className="font-semibold mb-2">Key Stats</h3>
-              <KeyValue k="Score" v={`${r.score}/100`} />
-              <KeyValue k="Liquidity (USD)" v={`$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`} />
-              <KeyValue k="Top Holder %" v={`${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`} />
-              <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
-            </div>
-          </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
-            <OpSecShare
-              summary={`OPSEC: ${r.symbol ?? ""} — Grade ${r.grade} on Base`}
-              imageUrl={r.imageUrl}
-              siteUrl={r.permalink}
-            />
-          </div>
-        </section>
-      )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 className="font-semibold mb-2">Summary</h3>
+                <div className="space-y-1 text-sm">
+                  {r.summary.map((s, i) => (
+                    <div key={i} className={s.ok ? "text-green-400" : "text-red-400"}>
+                      {s.ok ? "✓" : "✗"} {s.note}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">Key Stats</h3>
+                <KeyValue k="Score" v={`${r.score}/100`} />
+                <KeyValue k="Liquidity (USD)" v={`$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`} />
+                <KeyValue k="Top Holder %" v={`${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`} />
+                <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+              <span className="text-xs text-white/50">
+                Sources: BaseScan, GoPlus, DEX Screener, Honeypot
+              </span>
+              <div className="self-start md:self-auto">
+                <OpSecShare
+                  summary={`OPSEC: ${r.symbol ?? ""} — Grade ${r.grade} on Base`}
+                  imageUrl={r.imageUrl}
+                  siteUrl={r.permalink}
+                />
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
     </AgencyChrome>
   );
 }
