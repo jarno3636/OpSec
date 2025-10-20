@@ -2,8 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import Logo from "./Logo";
-import ShieldAvatar from "./ShieldAvatar";
+import Logo from "@/components/Logo";           // ⬅ use alias import
+import ShieldAvatar from "@/components/ShieldAvatar";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
