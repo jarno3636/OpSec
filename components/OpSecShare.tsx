@@ -13,17 +13,15 @@ export default function OpSecShare({
   siteUrl: string;
 }) {
   const share = async () => {
-    // Build a tuple for embeds to satisfy the SDK typing:
-    // [] | [string] | [string, string]
+    // Build a tuple for embeds to satisfy SDK typing: [] | [string] | [string, string]
     let embedsTuple: [] | [string] | [string, string] | undefined;
-
-    const hasSite = typeof siteUrl === "string" && siteUrl.length > 0;
-    const hasImg = typeof imageUrl === "string" && imageUrl.length > 0;
+    const hasSite = !!siteUrl;
+    const hasImg = !!imageUrl;
 
     if (hasSite && hasImg) embedsTuple = [siteUrl, imageUrl];
     else if (hasSite) embedsTuple = [siteUrl];
     else if (hasImg) embedsTuple = [imageUrl];
-    else embedsTuple = undefined; // no embeds
+    else embedsTuple = undefined;
 
     if (inFarcaster()) {
       try {
@@ -32,12 +30,16 @@ export default function OpSecShare({
           embeds: embedsTuple,
         });
       } catch {
-        // Fallback share intent
-        await sdk.actions.openShare({
-          cast: { text: summary, embeds: embedsTuple },
-        } as any);
+        // Fallback: open Warpcast compose with text + embeds via URL
+        const u = new URL("https://warpcast.com/~/compose");
+        u.searchParams.set("text", summary);
+        if (embedsTuple && embedsTuple.length > 0) {
+          for (const e of embedsTuple) u.searchParams.append("embeds[]", e);
+        }
+        await sdk.actions.openUrl(u.toString());
       }
     } else {
+      // Outside Farcaster → X intent
       const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
         summary
       )}&url=${encodeURIComponent(siteUrl)}`;
