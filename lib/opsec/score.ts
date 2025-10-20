@@ -6,7 +6,7 @@ import { clamp, pct } from "./math";
 type Raw = { bs: any; dx: any; gp: any; hp: any };
 
 type Finding = { key: string; ok: boolean; weight: number; note: string };
-const P = (ok:boolean, weight:number, note:string, key:string): Finding => ({ key, ok, weight, note });
+const P = (ok: boolean, weight: number, note: string, key: string): Finding => ({ key, ok, weight, note });
 
 const WEIGHTS = {
   contract: 30,
@@ -16,10 +16,15 @@ const WEIGHTS = {
   security: 15
 };
 
+type Metrics = {
+  liquidityUSD?: number;
+  topHolderPct?: number;
+  buySellRatio?: string;
+};
+
 export async function computeReport(address: Address, raw: Raw) {
   const findings: Finding[] = [];
-  const summary: Finding[] = [];
-  const metrics: any = {};
+  const metrics: Metrics = {};
 
   /* ---------- CONTRACT & PRIVILEGES (30) ---------- */
   const srcRec = raw.bs?.source?.result?.[0] ?? {};
@@ -43,8 +48,8 @@ export async function computeReport(address: Address, raw: Raw) {
   /* ---------- SUPPLY & HOLDERS (20) ---------- */
   // Top holders from BaseScan holderlist
   const holderList = raw.bs?.holders?.result ?? [];
-  const total = sum(holderList.map((h:any) => Number(h.TokenHolderQuantity)));
-  const top = Number(holderList?.[0]?.TokenHolderQuantity || 0);
+  const total = sum(holderList.map((h: any) => Number(hTokenQty(h))));
+  const top = Number(hTokenQty(holderList?.[0]) || 0);
   const topPct = total > 0 ? pct(top, total) : undefined;
   metrics.topHolderPct = topPct;
   findings.push(P(!!topPct && topPct < 20, 8, `Top holder ${(topPct ?? 0).toFixed(1)}%`, "holder_concentration"));
@@ -61,9 +66,9 @@ export async function computeReport(address: Address, raw: Raw) {
   metrics.liquidityUSD = liqUSD;
   findings.push(P(liqUSD >= 50000, 10, `Liquidity ~$${Math.round(liqUSD).toLocaleString()}`, "liquidity_depth"));
 
-  const lpLocked = parseBool(gpRec?.is_in_dex) && (gpRec?.lp_holders ?? []).some((h:any) =>
-    /unicrypt|team\.finance|pinklock|mudra|goplus/i.test(`${h.name || ""} ${h.address || ""}`)
-  );
+  const lpLocked =
+    parseBool(gpRec?.is_in_dex) &&
+    (gpRec?.lp_holders ?? []).some((h: any) => /unicrypt|team\.finance|pinklock|mudra|goplus/i.test(`${h.name || ""} ${h.address || ""}`));
   findings.push(P(lpLocked, 6, lpLocked ? "LP tokens locked/burned" : "LP lock unknown", "lp_lock"));
 
   const recentPulls = Boolean(gpRec?.is_recent_honeypot ?? false) || (gpRec?.is_mintable === "1" && gpRec?.owner_balance > 0);
@@ -72,11 +77,11 @@ export async function computeReport(address: Address, raw: Raw) {
   /* ---------- MARKET BEHAVIOR (15) ---------- */
   const buy = mainPair?.txns?.h24?.buys ?? 0;
   const sell = mainPair?.txns?.h24?.sells ?? 0;
-  const ratioOk = sell === 0 ? buy > 0 : (buy / sell) >= 0.5 && (buy / sell) <= 2.0;
+  const ratioOk = sell === 0 ? buy > 0 : buy / sell >= 0.5 && buy / sell <= 2.0;
   metrics.buySellRatio = sell === 0 ? "∞" : (buy / sell).toFixed(2);
   findings.push(P(ratioOk, 6, ratioOk ? "Balanced 24h buy/sell" : "Skewed 24h order flow", "buy_sell_ratio"));
 
-  const walletDispersionOk = (mainPair?.holders?.some ? /* not available via DS */ true : true);
+  const walletDispersionOk = true; // placeholder until you add a 7d wallet dominance calc
   findings.push(P(walletDispersionOk, 5, "No dominant single wallet in last 7d (heuristic)", "wallet_dispersion"));
 
   const taxSwing = Number(gpRec?.sell_tax ?? 0) - Number(gpRec?.buy_tax ?? 0);
@@ -98,9 +103,7 @@ export async function computeReport(address: Address, raw: Raw) {
   const grade = scoreToGrade(score);
 
   // Distill “summary”: top 6 most weighty negative + positive
-  const summary = findings
-    .sort((a,b)=>b.weight - a.weight)
-    .slice(0, 6);
+  const summary = findings.sort((a, b) => b.weight - a.weight).slice(0, 6);
 
   // Identity (name/symbol) from BaseScan or DEX Screener
   const name = srcRec?.ContractName || mainPair?.baseToken?.name;
@@ -109,8 +112,10 @@ export async function computeReport(address: Address, raw: Raw) {
   return {
     address,
     chainId: 8453,
-    name, symbol,
-    score, grade,
+    name,
+    symbol,
+    score,
+    grade,
     summary,
     findings,
     metrics,
@@ -125,24 +130,35 @@ export async function computeReport(address: Address, raw: Raw) {
 
 /* ---------------- helpers ---------------- */
 function scoreFromFindings(f: Finding[]) {
-  const sum = f.reduce((a,i)=> a + (i.ok ? i.weight : 0), 0);
-  const max = f.reduce((a,i)=> a + i.weight, 0);
-  return Math.round(clamp((sum/max)*100, 0, 100));
+  const sumScore = f.reduce((a, i) => a + (i.ok ? i.weight : 0), 0);
+  const max = f.reduce((a, i) => a + i.weight, 0);
+  return Math.round(clamp((sumScore / max) * 100, 0, 100));
 }
-function scoreToGrade(s:number){ return s>=90?"A":s>=80?"B":s>=70?"C":s>=60?"D":"F"; }
-
-function first<T>(x:any): T|undefined {
-  return Array.isArray(x?.result) ? x.result[0] : (Array.isArray(x) ? x[0] : x?.result ?? x);
+function scoreToGrade(s: number) {
+  return s >= 90 ? "A" : s >= 80 ? "B" : s >= 70 ? "C" : s >= 60 ? "D" : "F";
 }
-function gpToArr(gp:any){ return (gp?.result && typeof gp.result === "object") ? Object.values(gp.result) : []; }
-function anyTrue(v:any[]){ return v.map(Boolean).some(Boolean); }
-function sum(a:number[]){ return a.reduce((x,y)=>x+y,0); }
 
-function pickMainPair(dx:any){
+function first<T>(x: any): T | undefined {
+  return Array.isArray(x?.result) ? x.result[0] : Array.isArray(x) ? x[0] : x?.result ?? x;
+}
+function gpToArr(gp: any) {
+  return gp?.result && typeof gp.result === "object" ? Object.values(gp.result) : [];
+}
+function anyTrue(v: any[]) {
+  // Treat true/1/"1" as true; everything else false
+  return v.some((x) => x === true || x === 1 || x === "1");
+}
+function sum(a: number[]) {
+  return a.reduce((x, y) => x + y, 0);
+}
+
+function pickMainPair(dx: any) {
   const pairs = dx?.pairs ?? [];
   if (!pairs.length) return undefined;
   // Prefer Base chain, most liquidity
-  return pairs.sort((a:any,b:any)=> (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0))[0];
+  return pairs
+    .filter((p: any) => (p?.chainId ?? "").toString().toLowerCase() === "base")
+    .sort((a: any, b: any) => (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0))[0] ?? pairs[0];
 }
 
 async function guessOwner(addr: Address): Promise<string> {
@@ -154,38 +170,53 @@ async function guessOwner(addr: Address): Promise<string> {
     try {
       const owner2: string = await (baseClient as any).readContract({ address: addr, abi: ERC20 as any, functionName: "getOwner" });
       return owner2;
-    } catch { return "0x0000000000000000000000000000000000000000"; }
+    } catch {
+      return "0x0000000000000000000000000000000000000000";
+    }
   }
 }
 const DEAD = "0x000000000000000000000000000000000000dEaD";
-function isZeroAddress(a?:string){ return (a||"").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
-function isDeadAddress(a?:string){ return (a||"").toLowerCase() === DEAD.toLowerCase(); }
+function isZeroAddress(a?: string) {
+  return (a || "").toLowerCase() === "0x0000000000000000000000000000000000000000";
+}
+function isDeadAddress(a?: string) {
+  return (a || "").toLowerCase() === DEAD.toLowerCase();
+}
 
-function approxTeamPct(holders:any[]): number {
-  const interesting = holders.filter((h:any)=> /owner|team|marketing|deployer|contract/i.test(h.TokenHolderAddress || ""));
-  const tot = sum(holders.map((h:any)=> Number(h.TokenHolderQuantity)));
-  const team = sum(interesting.map((h:any)=> Number(h.TokenHolderQuantity)));
+function hTokenQty(h: any): number | string | undefined {
+  // BaseScan sometimes returns string fields; normalize
+  return h?.TokenHolderQuantity ?? h?.Balance ?? 0;
+}
+
+function approxTeamPct(holders: any[]): number {
+  const interesting = holders.filter((h: any) => /owner|team|marketing|deployer|contract/i.test(h?.TokenHolderAddress || ""));
+  const tot = sum(holders.map((h: any) => Number(hTokenQty(h))));
+  const team = sum(interesting.map((h: any) => Number(hTokenQty(h))));
   return tot > 0 ? pct(team, tot) : 0;
 }
-function suspiciousAirdrop(holders:any[]): boolean {
+function suspiciousAirdrop(holders: any[]): boolean {
   // Heuristic: many tiny equal balances among top 100
-  const q = holders.map((h:any)=> Number(h.TokenHolderQuantity)).filter(Boolean).sort((a,b)=>a-b);
+  const q = holders.map((h: any) => Number(hTokenQty(h))).filter(Boolean).sort((a, b) => a - b);
   if (q.length < 20) return false;
   let equalRuns = 0;
-  for (let i=1;i<q.length;i++){ if (Math.abs(q[i]-q[i-1]) < 1e-9) equalRuns++; }
+  for (let i = 1; i < q.length; i++) {
+    if (Math.abs(q[i] - q[i - 1]) < 1e-9) equalRuns++;
+  }
   return equalRuns > 20;
 }
-function parseBool(v:any){ return `${v}` === "1" || v === true; }
-function gpOK(g:any){
+function parseBool(v: any) {
+  return `${v}` === "1" || v === true;
+}
+function gpOK(g: any) {
   if (!g) return false;
   const bad = anyTrue([
-    g.is_honeypot === "1",
-    g.is_blacklisted === "1",
-    g.trading_cooldown === "1",
+    g.is_honeypot,
+    g.is_blacklisted,
+    g.trading_cooldown,
     Number(g.sell_tax) > 20,
     Number(g.buy_tax) > 20,
-    g.is_mintable === "1",
-    g.is_proxy === "1" && !g.proxy_implementation
+    g.is_mintable,
+    g.is_proxy && !g.proxy_implementation
   ]);
   return !bad;
 }
