@@ -9,9 +9,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const qRaw = (req.nextUrl.searchParams.get("query") || "").trim();
+  const debug = req.nextUrl.searchParams.get("debug") === "1";
+
   if (!qRaw || !isAddress(qRaw)) {
     return NextResponse.json(
-      { error: "Please provide a valid Base token contract address (0x…)." },
+      { error: "Please provide a valid Base token contract address (0x…)."},
       { status: 400 }
     );
   }
@@ -19,10 +21,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const [bs, dx, gp, hp] = await Promise.all([
-      fetchBaseScan(address),
-      fetchDexScreener(address),
-      fetchGoPlus(address),
-      fetchHoneypot(address),
+      fetchBaseScan(address, debug),
+      fetchDexScreener(address, debug),
+      fetchGoPlus(address, debug),
+      fetchHoneypot(address, debug),
     ]);
 
     const report = await computeReport(address, { bs, dx, gp, hp } as any);
@@ -33,7 +35,18 @@ export async function GET(req: NextRequest) {
     )}`;
     report.permalink = `${site}/opsec/${address}`;
 
-    return NextResponse.json(report, { headers: { "Cache-Control": "no-store" } });
+    // expose diagnostics only when debug=1
+    const upstreamDiagnostics = [
+      ...(bs._diag || []),
+      ...(dx._diag || []),
+      ...(gp._diag || []),
+      ...(hp._diag || []),
+    ];
+
+    return NextResponse.json(
+      debug ? { ...report, upstreamDiagnostics } : report,
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
