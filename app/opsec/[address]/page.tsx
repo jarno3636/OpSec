@@ -10,6 +10,7 @@ async function getReport(addr: string): Promise<OpSecReport> {
 
 export default async function Page({ params }: { params: { address: string } }) {
   const r = await getReport(params.address);
+
   return (
     <AgencyChrome>
       <div className="flex items-center justify-between mb-4">
@@ -19,12 +20,25 @@ export default async function Page({ params }: { params: { address: string } }) 
         </div>
         <ScoreBadge grade={r.grade} />
       </div>
-      <div className="space-y-2">
-        {r.findings.map((f) => (
-          <div key={f.key} className={`text-sm ${f.ok ? "text-green-400" : "text-red-400"}`}>
-            {f.ok ? "✓" : "✗"} {f.note} <span className="text-white/40">({f.weight})</span>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          {r.findings.map((f) => (
+            <div key={f.key} className={`text-sm ${f.ok ? "text-green-400" : "text-red-400"}`}>
+              {f.ok ? "✓" : "✗"} {f.note} <span className="text-white/40">({f.weight})</span>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-white/10 p-4">
+          <h3 className="font-semibold mb-2">Key Stats</h3>
+          <KeyValue k="Score" v={`${r.score}/100`} />
+          <KeyValue k="Liquidity (USD)" v={`$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`} />
+          <KeyValue k="Top Holder %" v={`${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`} />
+          <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
+          <div className="mt-3 text-xs text-white/50">
+            Sources: BaseScan, GoPlus, DEX Screener, Honeypot
           </div>
-        ))}
+        </div>
       </div>
     </AgencyChrome>
   );
