@@ -1,4 +1,3 @@
-// app/opsec/page.tsx
 "use client";
 import { useCallback, useMemo, useState } from "react";
 import AgencyChrome from "@/components/AgencyChrome";
@@ -8,17 +7,6 @@ import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
 import ShareRow from "@/components/ShareRow";
 
-export const metadata = {
-  title: "OpSec — Analyze a Base token",
-  description: "Paste a Base token contract address and run OpSec due-diligence.",
-  other: {
-    "fc:frame": "vNext",
-    "fc:frame:image": "/api/opsec/og?grade=A&name=OpSec",
-    "fc:frame:button:1": "Analyze a Token",
-    "fc:frame:button:1:action": "link",
-    "fc:frame:button:1:target": "/opsec",
-  },
-};
 export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
@@ -83,7 +71,10 @@ export default function Page() {
             <div className="relative flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 opacity-60">
                 <svg width="18" height="18" viewBox="0 0 24 24" className="block">
-                  <path fill="currentColor" d="M10 18a8 8 0 1 1 5.292-14.004A8 8 0 0 1 10 18m12.707 3.293l-6.27-6.27A10 10 0 1 0 12 22a9.963 9.963 0 0 0 5.023-1.373l6.27 6.27z"/>
+                  <path
+                    fill="currentColor"
+                    d="M10 18a8 8 0 1 1 5.292-14.004A8 8 0 0 1 10 18m12.707 3.293l-6.27-6.27A10 10 0 1 0 12 22a9.963 9.963 0 0 0 5.023-1.373l6.27 6.27z"
+                  />
                 </svg>
               </span>
               <input
@@ -213,8 +204,6 @@ export default function Page() {
             </section>
           )}
         </div>
-
-        {/* (Removed the name/symbol tip) */}
       </div>
     </AgencyChrome>
   );
