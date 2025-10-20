@@ -7,6 +7,9 @@ import type { OpSecReport, Metrics, Finding } from "./types";
 
 type Raw = { bs: any; dx: any; gp: any; hp: any };
 
+// Dynamic record returned by GoPlus (keys vary by token)
+type GoPlusRec = Record<string, any>;
+
 const P = (ok: boolean, weight: number, note: string, key: string): Finding => ({ key, ok, weight, note });
 
 const WEIGHTS = {
@@ -36,8 +39,13 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   findings.push(P(renounced, 8, renounced ? "Ownership renounced/0xdead" : `Owner retains privileges: ${ownerAddr}`, "owner"));
 
   // pause/blacklist flags via GoPlus + ABI keyword hints
-  const gpRec = first(gpToArr(raw.gp));
-  const hasBlacklist = anyTrue([gpRec?.can_blacklist, gpRec?.is_blacklisted, gpRec?.is_anti_whale, gpRec?.is_whitelisted]);
+  const gpRec: GoPlusRec = (first<GoPlusRec>(gpToArr(raw.gp)) ?? {}) as GoPlusRec;
+  const hasBlacklist = anyTrue([
+    gpRec?.can_blacklist,
+    gpRec?.is_blacklisted,
+    gpRec?.is_anti_whale,
+    gpRec?.is_whitelisted
+  ]);
   findings.push(P(!hasBlacklist, 6, hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls", "blacklist"));
 
   /* ---------- SUPPLY & HOLDERS (20) ---------- */
