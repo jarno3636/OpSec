@@ -1,11 +1,12 @@
+// lib/opsec/score.ts
 import type { Address } from "viem";
 import { baseClient } from "@/lib/rpc";
 import { ERC20 } from "./abi";
 import { clamp, pct } from "./math";
+import type { OpSecReport, Metrics, Finding } from "./types";
 
 type Raw = { bs: any; dx: any; gp: any; hp: any };
 
-type Finding = { key: string; ok: boolean; weight: number; note: string };
 const P = (ok: boolean, weight: number, note: string, key: string): Finding => ({ key, ok, weight, note });
 
 const WEIGHTS = {
@@ -14,15 +15,9 @@ const WEIGHTS = {
   liquidity: 20,
   behavior: 15,
   security: 15
-};
+} as const;
 
-type Metrics = {
-  liquidityUSD?: number;
-  topHolderPct?: number;
-  buySellRatio?: string;
-};
-
-export async function computeReport(address: Address, raw: Raw) {
+export async function computeReport(address: Address, raw: Raw): Promise<OpSecReport> {
   const findings: Finding[] = [];
   const metrics: Metrics = {};
 
@@ -46,7 +41,6 @@ export async function computeReport(address: Address, raw: Raw) {
   findings.push(P(!hasBlacklist, 6, hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls", "blacklist"));
 
   /* ---------- SUPPLY & HOLDERS (20) ---------- */
-  // Top holders from BaseScan holderlist
   const holderList = raw.bs?.holders?.result ?? [];
   const total = sum(holderList.map((h: any) => Number(hTokenQty(h))));
   const top = Number(hTokenQty(holderList?.[0]) || 0);
@@ -81,7 +75,7 @@ export async function computeReport(address: Address, raw: Raw) {
   metrics.buySellRatio = sell === 0 ? "∞" : (buy / sell).toFixed(2);
   findings.push(P(ratioOk, 6, ratioOk ? "Balanced 24h buy/sell" : "Skewed 24h order flow", "buy_sell_ratio"));
 
-  const walletDispersionOk = true; // placeholder until you add a 7d wallet dominance calc
+  const walletDispersionOk = true; // placeholder until 7d dominance calc is added
   findings.push(P(walletDispersionOk, 5, "No dominant single wallet in last 7d (heuristic)", "wallet_dispersion"));
 
   const taxSwing = Number(gpRec?.sell_tax ?? 0) - Number(gpRec?.buy_tax ?? 0);
@@ -119,6 +113,9 @@ export async function computeReport(address: Address, raw: Raw) {
     summary,
     findings,
     metrics,
+    // placeholders — API route will fill these in
+    imageUrl: "",
+    permalink: "",
     sources: {
       basescan: "BaseScan contract + holder + tokeninfo",
       goplus: "GoPlus token security",
@@ -156,9 +153,11 @@ function pickMainPair(dx: any) {
   const pairs = dx?.pairs ?? [];
   if (!pairs.length) return undefined;
   // Prefer Base chain, most liquidity
-  return pairs
-    .filter((p: any) => (p?.chainId ?? "").toString().toLowerCase() === "base")
-    .sort((a: any, b: any) => (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0))[0] ?? pairs[0];
+  return (
+    pairs
+      .filter((p: any) => (p?.chainId ?? "").toString().toLowerCase() === "base")
+      .sort((a: any, b: any) => (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0))[0] ?? pairs[0]
+  );
 }
 
 async function guessOwner(addr: Address): Promise<string> {
