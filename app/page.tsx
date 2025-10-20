@@ -1,7 +1,37 @@
 // app/page.tsx
+import type { Metadata } from "next";
 import Link from "next/link";
 import AgencyChrome from "@/components/AgencyChrome";
 import Logo from "@/components/Logo";
+
+export const metadata: Metadata = {
+  title: "OpSec — Token Due-Diligence on Base",
+  description:
+    "Professional-grade automated token checks for Base: source verification, ownership & proxy checks, supply concentration, liquidity, market behavior, and honeypot/flag scans.",
+  openGraph: {
+    title: "OpSec — Token Due-Diligence on Base",
+    description:
+      "Professional-grade automated token checks for Base: source verification, ownership & proxy checks, supply concentration, liquidity, market behavior, and honeypot/flag scans.",
+    url: "/",
+    type: "website",
+    images: [{ url: "/icon-1200x630.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OpSec — Token Due-Diligence on Base",
+    description:
+      "Professional-grade automated token checks for Base: source verification, ownership & proxy checks, supply concentration, liquidity, market behavior, and honeypot/flag scans.",
+    images: ["/icon-1200x630.png"],
+  },
+  // Farcaster frame hint (generic home-frame)
+  other: {
+    "fc:frame": "vNext",
+    "fc:frame:image": "/icon-1200x630.png",
+    "fc:frame:button:1": "Launch OpSec",
+    "fc:frame:button:1:action": "link",
+    "fc:frame:button:1:target": "/opsec",
+  },
+};
 
 export default function HomePage() {
   return (
