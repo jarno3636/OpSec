@@ -2,14 +2,18 @@
 "use client";
 
 import Link from "next/link";
-import Logo from "@/components/Logo";           // ⬅ use alias import
+import Logo from "@/components/Logo";
 import ShieldAvatar from "@/components/ShieldAvatar";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
+// Enumerate known routes so Next's typedRoutes is happy
+type MainRoute = "/" | "/opsec" | "/disclaimer";
+
 export default function NavBar() {
   const pathname = usePathname();
-  const link = (href: string, label: string) => {
+
+  const link = (href: MainRoute, label: string) => {
     const active = pathname === href || (href !== "/" && pathname?.startsWith(href));
     return (
       <Link
