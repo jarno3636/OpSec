@@ -24,12 +24,9 @@ export default function Page() {
     setR(null);
     try {
       const res = await fetch(`/api/opsec/analyze?query=${encodeURIComponent(query)}`, { cache: "no-store" });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Request failed (${res.status})`);
-      }
-      const json: OpSecReport = await res.json();
-      setR(json);
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Request failed (${res.status})`);
+      setR(payload);
     } catch (e: any) {
       setErr(e?.message || "Scan failed. Please try again.");
     } finally {
@@ -70,7 +67,6 @@ export default function Page() {
           </button>
         </div>
 
-        {/* Loading status / error */}
         <div className="min-h-[1.5rem] mb-4">
           {loading && (
             <span className="inline-flex items-center gap-2 text-xs text-white/80 px-3 py-1 rounded-lg border border-white/10 bg-white/5">
@@ -86,11 +82,11 @@ export default function Page() {
         </div>
 
         {r && (
-          <section className="rounded-2xl border border-white/10 p-4 space-y-4">
+          <section className="rounded-2xl border border-white/10 p-4 space-y-4 overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div className="text-center md:text-left">
-                <div className="text-xl font-bold">{r.name ?? r.symbol ?? r.address}</div>
-                <div className="text-white/60 text-sm">{r.address}</div>
+                <div className="text-xl font-bold break-all font-mono">{r.name ?? r.symbol ?? r.address}</div>
+                <div className="text-white/60 text-sm break-all font-mono">{r.address}</div>
               </div>
               <div className="self-center">
                 <ScoreBadge grade={r.grade} />
@@ -111,19 +107,23 @@ export default function Page() {
               <div>
                 <h3 className="font-semibold mb-2">Key Stats</h3>
                 <KeyValue k="Score" v={`${r.score}/100`} />
-                <KeyValue k="Liquidity (USD)" v={`$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`} />
-                <KeyValue k="Top Holder %" v={`${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`} />
+                <KeyValue
+                  k="Liquidity (USD)"
+                  v={typeof r.metrics.liquidityUSD === "number" ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}` : "—"}
+                />
+                <KeyValue
+                  k="Top Holder %"
+                  v={typeof r.metrics.topHolderPct === "number" ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%` : "—"}
+                />
                 <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
               </div>
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
-              <span className="text-xs text-white/50">
-                Sources: BaseScan, GoPlus, DEX Screener, Honeypot
-              </span>
+              <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
               <div className="self-start md:self-auto">
                 <OpSecShare
-                  summary={`OPSEC: ${r.symbol ?? ""} — Grade ${r.grade} on Base`}
+                  summary={`OPSEC: ${r.symbol ?? r.name ?? ""} — Grade ${r.grade} on Base`}
                   imageUrl={r.imageUrl}
                   siteUrl={r.permalink}
                 />
