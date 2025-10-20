@@ -8,30 +8,43 @@ export default function ShareRow({
   summary,
   url,
   image,
-}: { summary: string; url: string; image?: string }) {
+}: {
+  summary: string;
+  url: string;
+  image?: string;
+}) {
   const [casting, setCasting] = useState(false);
 
   const cast = async () => {
     if (!inFarcaster()) {
-      alert("Open inside a Farcaster Mini App to cast.");
+      alert("Open this inside a Farcaster Mini App to cast.");
       return;
     }
     setCasting(true);
     try {
-      await sdk.ready(); // ensure host is ready
-      const embeds: [] | [string] | [string, string] =
-        image ? [url, image] as [string, string] : [url];
+      // embeds must be [] | [string] | [string, string]
+      const embeds: [] | [string] | [string, string] = image
+        ? ([url, image] as [string, string])
+        : ([url] as [string]);
+
       await sdk.actions.composeCast({ text: summary, embeds });
     } catch (e) {
       console.error("composeCast failed", e);
-      alert("Couldn’t open cast composer.");
+      // Fallback: open the permalink; user can cast manually from there
+      try {
+        await sdk.actions.openUrl(url);
+      } catch {
+        alert("Couldn’t open the cast composer.");
+      }
     } finally {
       setCasting(false);
     }
   };
 
   const tweet = () => {
-    const u = `https://twitter.com/intent/tweet?text=${encodeURIComponent(summary)}&url=${encodeURIComponent(url)}`;
+    const u = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+      summary
+    )}&url=${encodeURIComponent(url)}`;
     window.open(u, "_blank");
   };
 
