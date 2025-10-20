@@ -1,117 +1,163 @@
-// app/opsec/[address]/page.tsx
+// app/page.tsx
 import Link from "next/link";
 import AgencyChrome from "@/components/AgencyChrome";
-import ScoreBadge from "@/components/ScoreBadge";
-import { KeyValue } from "@/components/KeyValue";
-import ShareRow from "@/components/ShareRow";
-import type { OpSecReport } from "@/lib/opsec/types";
+import Logo from "@/components/Logo";
 
-async function getReport(addr: string): Promise<OpSecReport> {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "";
-  const r = await fetch(`${base}/api/opsec/analyze?query=${addr}`, { cache: "no-store" });
-  if (!r.ok) {
-    // Server component: throw to let Next render error overlay or error page
-    throw new Error(`Failed to fetch report (${r.status})`);
-  }
-  return r.json();
-}
-
-export default async function Page({ params }: { params: { address: string } }) {
-  const r = await getReport(params.address);
-
+export default function HomePage() {
   return (
     <AgencyChrome>
-      <div className="mx-auto w-full max-w-5xl px-4">
-        <header className="mb-6 flex items-center justify-between gap-3">
-          <Link
-            href="/opsec"
-            className="text-sm text-white/70 hover:text-white rounded-lg px-2 py-1 hover:bg-white/10 transition"
-          >
-            ← Back to OpSec
-          </Link>
-        </header>
-
-        <section className="rounded-2xl border border-white/10 p-5 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.05),transparent_60%)] overflow-hidden shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
-          {/* Header Row */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="text-center md:text-left">
-              <div className="text-xl font-bold break-all font-mono">
-                {r.name ?? r.symbol ?? r.address}
-              </div>
-              <div className="text-white/60 text-sm break-all font-mono">
-                {r.address}
+      <div className="mx-auto max-w-5xl px-4">
+        {/* HERO */}
+        <section className="pt-10 pb-8">
+          <div className="flex flex-col md:flex-row items-start justify-between gap-8">
+            <div>
+              <Logo size={48} />
+              <h1 className="mt-4 text-4xl md:text-5xl font-black leading-tight tracking-tight">
+                Professional Token Due-Diligence
+                <br />
+                <span className="text-scan">for Base</span>
+              </h1>
+              <p className="mt-3 text-white/70 max-w-2xl">
+                OpSec inspects Base tokens like a covert review team—source
+                verification, ownership &amp; proxy checks, supply concentration,
+                liquidity strength, market behavior, and honeypot/flag scans.
+                Get a clean, shareable report in seconds.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/opsec"
+                  className="px-5 py-3 rounded-xl bg-scan text-black font-semibold hover:opacity-90 transition shadow-[0_8px_24px_-12px_rgba(0,255,149,0.45)]"
+                >
+                  Launch OpSec
+                </Link>
+                <a
+                  href="https://basescan.org"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-5 py-3 rounded-xl border border-white/15 text-white/90 hover:bg-white/5 transition"
+                >
+                  BaseScan
+                </a>
               </div>
             </div>
-            <div className="self-center">
-              <ScoreBadge grade={r.grade} />
+
+            {/* Live Preview Card */}
+            <div className="w-full md:w-auto">
+              <div className="rounded-2xl border border-white/10 p-5 bg-white/5 backdrop-blur-sm">
+                <div className="text-xs font-mono text-white/60">LIVE PREVIEW</div>
+                <div className="mt-2 rounded-xl bg-black/60 border border-white/10 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-white/80 text-sm">GRADE</div>
+                    <div className="w-12 h-12 rounded-xl bg-green-500 text-black font-black grid place-items-center text-2xl shadow-inner">
+                      A
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-white/70 font-mono space-y-1">
+                    <div>✓ Source verified</div>
+                    <div>✓ LP locked</div>
+                    <div>✓ Balanced flow</div>
+                    <div className="text-red-300">✗ Top holder 27.1%</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* HOW IT WORKS */}
+        <section className="mt-8 grid md:grid-cols-3 gap-4">
+          {[
+            {
+              title: "1) Paste Address",
+              body:
+                "Enter a Base token contract address (0x…). We automatically pull the most relevant on-chain and off-chain data.",
+            },
+            {
+              title: "2) Deep Scan",
+              body:
+                "We query BaseScan, GoPlus, DEX Screener, Honeypot and on-chain reads to assemble a complete picture.",
+            },
+            {
+              title: "3) Share",
+              body:
+                "Get a clean report with a letter grade and cast/tweet directly from the app.",
+            },
+          ].map((c) => (
+            <div
+              key={c.title}
+              className="rounded-2xl border border-white/10 p-4 bg-white/[0.04] hover:bg-white/[0.06] transition"
+            >
+              <h3 className="font-semibold">{c.title}</h3>
+              <p className="mt-1 text-sm text-white/70">{c.body}</p>
+            </div>
+          ))}
+        </section>
+
+        {/* SCORING EXPLAINER */}
+        <section className="mt-8 rounded-2xl border border-white/10 p-6 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.06),transparent_60%)] shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
+          <h2 className="text-2xl font-bold">How the Score Works</h2>
+          <p className="mt-1 text-white/70 max-w-3xl">
+            OpSec produces a 0–100 score and a letter grade. Each category is a
+            weighted sum of pass/fail checks. We surface the most impactful
+            findings as a quick “summary” and show detailed items below.
+          </p>
+
+          <div className="mt-5 grid md:grid-cols-5 gap-3 text-sm">
+            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
+              <div className="font-semibold">Contract &amp; Privileges</div>
+              <div className="text-white/60">30%</div>
+              <ul className="mt-2 text-white/70 space-y-1">
+                <li>• Source verified</li>
+                <li>• Proxy &amp; implementation</li>
+                <li>• Ownership / renounce</li>
+                <li>• Blacklist / pause / mint</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
+              <div className="font-semibold">Supply &amp; Holders</div>
+              <div className="text-white/60">20%</div>
+              <ul className="mt-2 text-white/70 space-y-1">
+                <li>• Top holder %</li>
+                <li>• Team/deployer buckets</li>
+                <li>• Airdrop noise</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
+              <div className="font-semibold">Liquidity</div>
+              <div className="text-white/60">20%</div>
+              <ul className="mt-2 text-white/70 space-y-1">
+                <li>• Depth (USD)</li>
+                <li>• LP locks/burn</li>
+                <li>• Pull/mint risk</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
+              <div className="font-semibold">Market Behavior</div>
+              <div className="text-white/60">15%</div>
+              <ul className="mt-2 text-white/70 space-y-1">
+                <li>• 24h buy/sell balance</li>
+                <li>• Wallet dispersion (heuristic)</li>
+                <li>• Tax swing Δ</li>
+              </ul>
+            </div>
+            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
+              <div className="font-semibold">Security Signals</div>
+              <div className="text-white/60">15%</div>
+              <ul className="mt-2 text-white/70 space-y-1">
+                <li>• Honeypot check</li>
+                <li>• GoPlus flags</li>
+                <li>• Socials on explorer</li>
+              </ul>
             </div>
           </div>
 
-          {/* Body */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Findings */}
-            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
-              <h3 className="font-semibold mb-2">Findings</h3>
-              <div className="grid grid-cols-1 gap-2">
-                {r.findings.map((f) => (
-                  <div
-                    key={f.key}
-                    className={`flex items-start justify-between gap-3 rounded-lg px-3 py-2 border ${
-                      f.ok
-                        ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
-                        : "border-red-500/20 bg-red-500/5 text-red-300"
-                    }`}
-                  >
-                    <span className="text-sm leading-5">
-                      {f.ok ? "✓" : "✗"} {f.note}
-                    </span>
-                    <span className="text-[10px] leading-5 text-white/60">w:{f.weight}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Key Stats */}
-            <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
-              <h3 className="font-semibold mb-2">Key Stats</h3>
-              <div className="space-y-2">
-                <KeyValue k="Score" v={`${r.score}/100`} />
-                <KeyValue
-                  k="Liquidity (USD)"
-                  v={
-                    typeof r.metrics.liquidityUSD === "number"
-                      ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
-                      : "—"
-                  }
-                />
-                <KeyValue
-                  k="Top Holder %"
-                  v={
-                    typeof r.metrics.topHolderPct === "number"
-                      ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
-                      : "—"
-                  }
-                />
-                <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
-              </div>
-
-              <div className="mt-4 text-xs text-white/50">
-                Sources: BaseScan, GoPlus, DEX Screener, Honeypot
-              </div>
-
-              {/* Share */}
-              <div className="mt-4">
-                <ShareRow
-                  token={r.symbol ?? r.name ?? r.address}
-                  grade={r.grade}
-                  liquidityUSD={typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined}
-                  topHolderPct={typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined}
-                  buySellRatio={r.metrics.buySellRatio}
-                  url={r.permalink}
-                  image={r.imageUrl}
-                />
-              </div>
-            </div>
+          <div className="mt-6">
+            <Link
+              href="/opsec"
+              className="inline-block px-5 py-3 rounded-xl bg-white text-black font-semibold hover:opacity-90 transition"
+            >
+              Analyze a Token →
+            </Link>
           </div>
         </section>
       </div>
