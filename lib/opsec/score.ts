@@ -1,13 +1,19 @@
 // lib/opsec/score.ts
 import type { Address } from "viem";
-import { baseClient } from "@/lib/rpc";
-import { ERC20 } from "./abi";
 import { clamp, pct } from "./math";
 import type { OpSecReport, Finding } from "./types";
+import { readOwner, readEip1967Implementation } from "./onchain";
 
-type Raw = { bs: any; dx: any; gp: any; hp: any };
+type Raw = {
+  bs: any;
+  dx?: any;        // legacy: fetchDexScreener
+  markets?: any;   // new: fetchMarkets (DexScreener + GeckoTerminal fallback)
+  gp: any;
+  hp: any;
+};
 
-const P = (ok: boolean, weight: number, note: string, key: string): Finding => ({ key, ok, weight, note });
+const P = (ok: boolean, weight: number, note: string, key: string): Finding =>
+  ({ key, ok, weight, note });
 
 export async function computeReport(address: Address, raw: Raw): Promise<OpSecReport> {
   const findings: Finding[] = [];
@@ -18,29 +24,38 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const verified = !!srcRec?.SourceCode && srcRec.SourceCode.length > 0;
   findings.push(P(verified, 10, verified ? "Source verified on BaseScan" : "Source not verified", "verified"));
 
-  const isProxy = /proxy/i.test(srcRec?.Proxy ?? "") || /proxy/i.test(srcRec?.ContractName ?? "");
-  const hasImpl = !!srcRec?.Implementation;
-  const proxyOk = !isProxy || (isProxy && !srcRec?.Implementation?.startsWith("0x000000"));
-  findings.push(P(proxyOk, 6, isProxy ? (hasImpl ? "Upgradeable proxy detected" : "Proxy w/out impl") : "No proxy risk detected", "proxy"));
+  // Proxy detection: prefer EIP-1967 storage slot; fall back to explorer hints
+  const impl = await readEip1967Implementation(address);
+  const isProxyHint = /proxy/i.test(srcRec?.Proxy ?? "") || /proxy/i.test(srcRec?.ContractName ?? "");
+  const proxyDetected = !!impl || isProxyHint || !!srcRec?.Implementation;
+  const hasImpl = !!impl || (!!srcRec?.Implementation && !String(srcRec?.Implementation).startsWith("0x000000"));
+  findings.push(
+    P(!proxyDetected || hasImpl, 6,
+      proxyDetected ? (hasImpl ? "Upgradeable proxy detected" : "Proxy w/out impl") : "No proxy risk detected",
+      "proxy")
+  );
 
-  const ownerAddr = await guessOwner(address);
-  const renounced = isZeroAddress(ownerAddr) || isDeadAddress(ownerAddr);
+  // Ownership (robust: tries owner() then getOwner(); never throws)
+  const ownerAddr = (await readOwner(address)) || "0x0000000000000000000000000000000000000000";
+  const renounced = isZero(ownerAddr) || isDead(ownerAddr);
   findings.push(P(renounced, 8, renounced ? "Ownership renounced/0xdead" : `Owner retains privileges: ${ownerAddr}`, "owner"));
 
-  // GoPlus flags (cast to any to avoid TS {} property errors)
-  const gpRec: any = first(gpToArr(raw.gp)) as any;
+  // GoPlus (cast to any to dodge strict result typing)
+  const gpRec: any = first(gpToArr(raw.gp));
   if (gpRec) {
     const hasBlacklist = anyTrue([gpRec?.can_blacklist, gpRec?.is_blacklisted, gpRec?.is_anti_whale, gpRec?.is_whitelisted]);
     findings.push(
-      P(!hasBlacklist, 6, hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls", "blacklist")
+      P(!hasBlacklist, 6,
+        hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls",
+        "blacklist")
     );
   }
 
   /* ---------- SUPPLY & HOLDERS ---------- */
-  const holderList: any[] = raw.bs?.holders?.result ?? [];
-  if (Array.isArray(holderList) && holderList.length > 0) {
-    const total = sum(holderList.map((h: any) => Number(hTokenQty(h))));
-    const top = Number(hTokenQty(holderList?.[0]) || 0);
+  const holderList: any[] = Array.isArray(raw.bs?.holders?.result) ? raw.bs.holders.result : [];
+  if (holderList.length > 0) {
+    const total = sum(holderList.map(h => num(hTokenQty(h))));
+    const top = num(hTokenQty(holderList[0]));
     if (total > 0) {
       const topPct = pct(top, total);
       metrics.topHolderPct = topPct;
@@ -54,15 +69,25 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
     findings.push(P(!airdropNoise, 6, airdropNoise ? "Suspicious airdrop pattern" : "No suspicious airdrop concentration", "airdrops"));
   }
 
-  /* ---------- LIQUIDITY ---------- */
-  const mainPair = pickMainPair(raw.dx);
+  /* ---------- LIQUIDITY & MARKET BEHAVIOR ---------- */
+  const pairs = (raw.dx?.pairs ?? raw.markets?.pairs ?? []) as any[];
+  const mainPair = pickMainPair(pairs);
   if (mainPair) {
-    const liqUSD = Number(mainPair?.liquidity?.usd ?? 0);
-    if (Number.isFinite(liqUSD)) {
+    const liqUSD = num(mainPair?.liquidity?.usd);
+    if (isFinite(liqUSD)) {
       metrics.liquidityUSD = liqUSD;
       findings.push(P(liqUSD >= 50_000, 10, `Liquidity ~$${Math.round(liqUSD).toLocaleString()}`, "liquidity_depth"));
     }
 
+    const buy = num(mainPair?.txns?.h24?.buys);
+    const sell = num(mainPair?.txns?.h24?.sells);
+    if (isFinite(buy) && isFinite(sell)) {
+      const ratioOk = sell === 0 ? buy > 0 : (buy / sell >= 0.5 && buy / sell <= 2.0);
+      metrics.buySellRatio = sell === 0 ? "∞" : (buy / sell).toFixed(2);
+      findings.push(P(ratioOk, 6, ratioOk ? "Balanced 24h buy/sell" : "Skewed 24h order flow", "buy_sell_ratio"));
+    }
+
+    // LP lock / recent pulls via GoPlus (if present)
     if (gpRec) {
       const lpLocked =
         parseBool(gpRec?.is_in_dex) &&
@@ -74,20 +99,10 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
     }
   }
 
-  /* ---------- MARKET BEHAVIOR ---------- */
-  if (mainPair?.txns?.h24) {
-    const buy = Number(mainPair?.txns?.h24?.buys ?? 0);
-    const sell = Number(mainPair?.txns?.h24?.sells ?? 0);
-    if (Number.isFinite(buy) && Number.isFinite(sell)) {
-      const ratioOk = sell === 0 ? buy > 0 : buy / sell >= 0.5 && buy / sell <= 2.0;
-      metrics.buySellRatio = sell === 0 ? "∞" : (buy / sell).toFixed(2);
-      findings.push(P(ratioOk, 6, ratioOk ? "Balanced 24h buy/sell" : "Skewed 24h order flow", "buy_sell_ratio"));
-    }
-  }
-
+  // Tax swing from GoPlus, if available
   if (gpRec) {
     const taxSwing = Number(gpRec?.sell_tax ?? 0) - Number(gpRec?.buy_tax ?? 0);
-    if (Number.isFinite(taxSwing)) findings.push(P(Math.abs(taxSwing) <= 10, 4, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
+    if (isFinite(taxSwing)) findings.push(P(Math.abs(taxSwing) <= 10, 4, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
   }
 
   /* ---------- SECURITY SIGNALS ---------- */
@@ -103,12 +118,14 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const socialsOk = !!(srcRec?.SocialProfiles || srcRec?.Email);
   findings.push(P(socialsOk, 3, socialsOk ? "Socials present on explorer" : "Missing socials on explorer", "socials"));
 
-  /* ---------- SCORE/grade ---------- */
+  /* ---------- SCORE / GRADE / PRESENTATION ---------- */
   const score = scoreFromFindings(findings);
   const grade = scoreToGrade(score);
+
+  // Take the 6 most-weighted items for “Summary”
   const summary = findings.slice().sort((a, b) => b.weight - a.weight).slice(0, 6);
 
-  // Prefer BaseScan tokeninfo for reliable identity
+  // Identity: prefer BaseScan tokeninfo, then source, then market pair
   const ti = raw.bs?.tokeninfo?.result?.[0] ?? {};
   const name = ti?.tokenName || srcRec?.ContractName || mainPair?.baseToken?.name;
   const symbol = ti?.tokenSymbol || srcRec?.Symbol || mainPair?.baseToken?.symbol;
@@ -128,7 +145,7 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
     sources: {
       basescan: "BaseScan contract + holder + tokeninfo",
       goplus: "GoPlus token security",
-      dexscreener: "DEX Screener pairs + liquidity + txns",
+      dexscreener: "DEX Screener / GeckoTerminal pairs + liquidity + txns",
       honeypot: "Honeypot.is",
     },
   };
@@ -149,46 +166,38 @@ function first<T>(x: any): T | undefined {
 function gpToArr(gp: any) { return gp?.result && typeof gp.result === "object" ? Object.values(gp.result) : []; }
 function anyTrue(v: any[]) { return v.some((x) => x === true || x === 1 || x === "1"); }
 function sum(a: number[]) { return a.reduce((x, y) => x + y, 0); }
+function num(v: any): number { const n = Number(v ?? 0); return Number.isFinite(n) ? n : 0; }
 
-function pickMainPair(dx: any) {
-  const pairs = dx?.pairs ?? [];
-  if (!pairs.length) return undefined;
-  // Prefer Base chain & highest liquidity
-  return (
-    pairs
-      .sort((a: any, b: any) => {
-        const ab = a?.chainId === "base" ? 1 : 0;
-        const bb = b?.chainId === "base" ? 1 : 0;
-        if (ab !== bb) return bb - ab; // put base first
-        return (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0);
-      })[0]
-  );
+function pickMainPair(pairs: any[]) {
+  if (!Array.isArray(pairs) || !pairs.length) return undefined;
+  return pairs
+    .slice()
+    .sort((a: any, b: any) => {
+      // prefer Base, then by liquidity USD desc
+      const ab = (a?.chainId || "").toString().toLowerCase() === "base" ? 1 : 0;
+      const bb = (b?.chainId || "").toString().toLowerCase() === "base" ? 1 : 0;
+      if (ab !== bb) return bb - ab;
+      return (b?.liquidity?.usd ?? 0) - (a?.liquidity?.usd ?? 0);
+    })[0];
 }
 
-async function guessOwner(addr: Address): Promise<string> {
-  try {
-    const owner: string = await (baseClient as any).readContract({ address: addr, abi: ERC20 as any, functionName: "owner" });
-    return owner;
-  } catch {
-    try {
-      const owner2: string = await (baseClient as any).readContract({ address: addr, abi: ERC20 as any, functionName: "getOwner" });
-      return owner2;
-    } catch { return "0x0000000000000000000000000000000000000000"; }
-  }
-}
 const DEAD = "0x000000000000000000000000000000000000dEaD";
-function isZeroAddress(a?: string) { return (a || "").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
-function isDeadAddress(a?: string) { return (a || "").toLowerCase() === DEAD.toLowerCase(); }
+function isZero(a?: string) { return (a || "").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
+function isDead(a?: string) { return (a || "").toLowerCase() === DEAD.toLowerCase(); }
 
-function hTokenQty(h: any): number | string | undefined { return h?.TokenHolderQuantity ?? h?.Balance ?? 0; }
+function hTokenQty(h: any): number | string | undefined {
+  return h?.TokenHolderQuantity ?? h?.Balance ?? 0;
+}
 function approxTeamPct(holders: any[]): number {
-  const interesting = holders.filter((h: any) => /owner|team|marketing|deployer|contract/i.test(h?.TokenHolderAddress || ""));
-  const tot = sum(holders.map((h: any) => Number(hTokenQty(h))));
-  const team = sum(interesting.map((h: any) => Number(hTokenQty(h))));
+  const interesting = holders.filter((h: any) =>
+    /owner|team|marketing|deployer|contract/i.test(h?.TokenHolderAddress || "")
+  );
+  const tot = sum(holders.map((h: any) => num(hTokenQty(h))));
+  const team = sum(interesting.map((h: any) => num(hTokenQty(h))));
   return tot > 0 ? pct(team, tot) : 0;
 }
 function suspiciousAirdrop(holders: any[]): boolean {
-  const q = holders.map((h: any) => Number(hTokenQty(h))).filter(Boolean).sort((a, b) => a - b);
+  const q = holders.map((h: any) => num(hTokenQty(h))).filter(Boolean).sort((a, b) => a - b);
   if (q.length < 20) return false;
   let equalRuns = 0;
   for (let i = 1; i < q.length; i++) if (Math.abs(q[i] - q[i - 1]) < 1e-9) equalRuns++;
@@ -198,9 +207,13 @@ function parseBool(v: any) { return `${v}` === "1" || v === true; }
 function gpOK(g: any) {
   if (!g) return false;
   const bad = anyTrue([
-    g.is_honeypot, g.is_blacklisted, g.trading_cooldown,
-    Number(g.sell_tax) > 20, Number(g.buy_tax) > 20,
-    g.is_mintable, g.is_proxy && !g.proxy_implementation,
+    g.is_honeypot,
+    g.is_blacklisted,
+    g.trading_cooldown,
+    Number(g.sell_tax) > 20,
+    Number(g.buy_tax) > 20,
+    g.is_mintable,
+    (g.is_proxy && !g.proxy_implementation),
   ]);
   return !bad;
 }
