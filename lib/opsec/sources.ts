@@ -1,198 +1,197 @@
 // lib/opsec/sources.ts
 import type { Address } from "viem";
 
-/** ---------- Small resilient fetch (timeout + retries + jitter) ---------- */
-const UA = "opsec-miniapp/1.0";
+/* ---------------- generic fetch with retry/backoff ---------------- */
+const UA = "opsec-miniapp/1.1";
 const TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 12000);
 const MAX_RETRIES = 3;
 
-type Jsonish = Record<string, any> | any[];
+type Diag = { name: string; url: string; status?: number; ok: boolean; ms: number; note?: string };
+export type UpstreamBundle<T> = T & { _diagnostics: Diag[] };
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-function backoffDelay(attempt: number) {
-  // 250ms, 500ms, 1000ms (+ jitter 0–100ms)
-  const base = 250 * Math.pow(2, attempt);
-  const jitter = Math.floor(Math.random() * 100);
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+function backoff(attempt: number) {
+  const base = 250 * Math.pow(2, attempt); // 250, 500, 1000
+  const jitter = Math.floor(Math.random() * 120);
   return base + jitter;
 }
 
-export type FetchResult<T extends Jsonish = any> = {
-  ok: boolean;
-  status: number;
-  ms: number;
-  data?: T;
-  error?: string;
-};
-
-async function getJSON<T extends Jsonish = any>(
-  url: string,
-  init: RequestInit = {},
-  { retries = MAX_RETRIES, timeout = TIMEOUT_MS }: { retries?: number; timeout?: number } = {}
-): Promise<FetchResult<T>> {
-  let lastErr: string | undefined;
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
+async function getJSON(url: string, init: RequestInit = {}) {
+  let lastErr: any;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const ctrl = new AbortController();
-    const t0 = Date.now();
-    const timer = setTimeout(() => ctrl.abort(), timeout);
-
+    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const started = Date.now();
     try {
       const r = await fetch(url, {
         ...init,
         signal: ctrl.signal,
+        headers: { "Accept": "application/json", "User-Agent": UA, ...(init.headers || {}) },
         cache: "no-store",
-        headers: { Accept: "application/json", "User-Agent": UA, ...(init.headers || {}) },
       });
-
-      const ms = Date.now() - t0;
-      clearTimeout(timer);
-
-      const text = await r.text();
-      let data: any;
-      try { data = text ? JSON.parse(text) : undefined; } catch { data = text; }
-
-      // Treat Etherscan-style NOTOK as non-ok
-      const etherscanNotOK = typeof data === "object" && data?.status === "0" && data?.message === "NOTOK";
-
-      return {
-        ok: r.ok && !etherscanNotOK,
-        status: r.status,
-        ms,
-        data,
-        error: r.ok ? (etherscanNotOK ? data?.result || "NOTOK" : undefined) : `${r.status} ${r.statusText}`,
-      };
-    } catch (e: any) {
-      clearTimeout(timer);
-      lastErr = e?.name === "AbortError" ? "timeout" : (e?.message || "request_failed");
-      if (attempt < retries) await sleep(backoffDelay(attempt));
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const json = await r.json();
+      clearTimeout(t);
+      (json as any).__http = { status: r.status, ms: Date.now() - started };
+      return json;
+    } catch (e) {
+      lastErr = e;
+      clearTimeout(t);
+      if (attempt < MAX_RETRIES) await sleep(backoff(attempt));
     }
   }
-
-  return { ok: false, status: 0, ms: 0, error: lastErr || "request_failed" };
+  throw lastErr;
 }
 
-/** ---------- Diagnostics types (optional, used when ?debug=1) ---------- */
-export type UpstreamDiag = {
-  name: "BaseScan" | "GoPlus" | "DexScreener" | "Honeypot";
-  url: string;
-  ok: boolean;
-  status: number;
-  ms: number;
-  note?: string;
-};
-
-const redact = (obj: any, bytes = 1200) => {
-  try {
-    const s = JSON.stringify(obj);
-    return s.length > bytes ? JSON.parse(s.slice(0, bytes)) : obj;
-  } catch {
-    return obj;
-  }
-};
-
-/** ---------- BaseScan (try v2 then v1) ---------- */
-export async function fetchBaseScan(addr: Address, debug = false) {
+/* ---------------- BaseScan (Etherscan-compatible) ---------------- */
+export async function fetchBaseScan(addr: Address): Promise<UpstreamBundle<{ source: any; holders: any; tokeninfo: any }>> {
   const key = process.env.BASESCAN_KEY || "";
   const host = "https://api.basescan.org";
-  const q2 = (p: Record<string, string>) =>
-    `${host}/v2/api?` + new URLSearchParams({ ...p, chainid: "8453", apikey: key }).toString();
-  const q1 = (p: Record<string, string>) =>
-    `${host}/api?` + new URLSearchParams({ ...p, apikey: key }).toString();
+  const q2 = (p: Record<string, string>) => `${host}/v2/api?` + new URLSearchParams({ ...p, chainid: "8453", apikey: key }).toString();
+  const q1 = (p: Record<string, string>) => `${host}/api?`  + new URLSearchParams({ ...p, apikey: key }).toString();
 
-  const diags: UpstreamDiag[] = [];
+  const diags: Diag[] = [];
 
-  async function call(label: string, v2: string, v1: string) {
-    let res = await getJSON(v2);
-    diags.push({ name: "BaseScan", url: v2, ok: res.ok, status: res.status, ms: res.ms, note: res.error });
-    if (!res.ok) {
-      const res2 = await getJSON(v1);
-      diags.push({ name: "BaseScan", url: v1, ok: res2.ok, status: res2.status, ms: res2.ms, note: res2.error });
-      res = res2;
+  async function wrap(name: string, url: string, f: () => Promise<any>, note?: string) {
+    const t0 = performance.now();
+    try {
+      const json = await f();
+      const http = json?.__http || {};
+      diags.push({ name, url, status: http.status, ms: http.ms ?? Math.round(performance.now() - t0), ok: true, note });
+      return json;
+    } catch (e: any) {
+      diags.push({ name, url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+      return { result: [] };
     }
-    return res.data ?? {};
   }
 
-  const [source, holders, tokeninfo] = await Promise.all([
-    call("getsourcecode",
-      q2({ module: "contract", action: "getsourcecode", address: addr }),
-      q1({ module: "contract", action: "getsourcecode", address: addr })
-    ).catch(() => ({ result: [] })),
-    call("tokenholderlist",
-      q2({ module: "token", action: "tokenholderlist", contractaddress: addr, page: "1", offset: "100" }),
-      q1({ module: "token", action: "tokenholderlist", contractaddress: addr, page: "1", offset: "100" })
-    ).catch(() => ({ result: [] })),
-    call("tokeninfo",
-      q2({ module: "token", action: "tokeninfo", contractaddress: addr }),
-      q1({ module: "token", action: "tokeninfo", contractaddress: addr })
-    ).catch(() => ({ result: [] })),
-  ]);
+  const source = await (async () => {
+    const u2 = q2({ module: "contract", action: "getsourcecode", address: addr });
+    const j2 = await wrap("BaseScan:getsourcecode(v2)", u2, () => getJSON(u2));
+    if (Array.isArray(j2?.result) && j2.result.length) return j2;
+    const u1 = q1({ module: "contract", action: "getsourcecode", address: addr });
+    return await wrap("BaseScan:getsourcecode(v1)", u1, () => getJSON(u1), "fallback v1");
+  })();
 
-  return {
-    source,
-    holders,
-    tokeninfo,
-    _diag: debug ? diags.map(d => ({ ...d, sample: undefined })) : undefined,
-  };
+  const holders = await (async () => {
+    const u2 = q2({ module: "token", action: "tokenholderlist", contractaddress: addr, page: "1", offset: "100" });
+    const j2 = await wrap("BaseScan:tokenholderlist(v2)", u2, () => getJSON(u2));
+    if (Array.isArray(j2?.result) && j2.result.length) return j2;
+    const u1 = q1({ module: "token", action: "tokenholderlist", contractaddress: addr, page: "1", offset: "100" });
+    return await wrap("BaseScan:tokenholderlist(v1)", u1, () => getJSON(u1), "fallback v1");
+  })();
+
+  const tokeninfo = await (async () => {
+    const u2 = q2({ module: "token", action: "tokeninfo", contractaddress: addr });
+    const j2 = await wrap("BaseScan:tokeninfo(v2)", u2, () => getJSON(u2));
+    if (Array.isArray(j2?.result) && j2.result.length) return j2;
+    const u1 = q1({ module: "token", action: "tokeninfo", contractaddress: addr });
+    return await wrap("BaseScan:tokeninfo(v1)", u1, () => getJSON(u1), "fallback v1");
+  })();
+
+  return { source, holders, tokeninfo, _diagnostics: diags };
 }
 
-/** ---------- DEX Screener (token → search fallback; Base only) ---------- */
-export async function fetchDexScreener(addr: Address, debug = false) {
-  const urlToken = `https://api.dexscreener.com/latest/dex/tokens/${addr}`;
-  const r1 = await getJSON(urlToken);
-  const pairs1 = Array.isArray((r1.data as any)?.pairs) ? (r1.data as any).pairs : [];
-  let basePairs = pairs1.filter((p: any) => (p?.chainId || "").toLowerCase() === "base");
+/* ---------------- Markets (DEX Screener first, GeckoTerminal fallback) ---------------- */
+export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pairs: any[] }>> {
+  const diags: Diag[] = [];
+  const add = (d: Diag) => diags.push(d);
 
-  const diags: UpstreamDiag[] = [{ name: "DexScreener", url: urlToken, ok: r1.ok, status: r1.status, ms: r1.ms, note: r1.error }];
-
-  if (!basePairs.length) {
-    const urlSearch = `https://api.dexscreener.com/latest/dex/search?q=${addr}`;
-    const r2 = await getJSON(urlSearch);
-    diags.push({ name: "DexScreener", url: urlSearch, ok: r2.ok, status: r2.status, ms: r2.ms, note: r2.error });
-    const pairs2 = Array.isArray((r2.data as any)?.pairs) ? (r2.data as any).pairs : [];
-    basePairs = pairs2.filter((p: any) => (p?.chainId || "").toLowerCase() === "base");
+  // 1) DEX Screener by token
+  let dsPairs: any[] = [];
+  {
+    const url = `https://api.dexscreener.com/latest/dex/tokens/${addr}`;
+    const t0 = performance.now();
+    try {
+      const j = await getJSON(url);
+      const http = j?.__http || {};
+      add({ name: "DexScreener:tokens", url, status: http.status, ms: http.ms ?? Math.round(performance.now() - t0), ok: true });
+      dsPairs = (j?.pairs || []).filter((p: any) => (p?.chainId || "").toLowerCase() === "base");
+    } catch (e: any) {
+      add({ name: "DexScreener:tokens", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+    }
   }
 
-  return { pairs: basePairs, _diag: debug ? diags : undefined };
+  // 2) If missing, DEX Screener search
+  if (!dsPairs.length) {
+    const url = `https://api.dexscreener.com/latest/dex/search?q=${addr}`;
+    const t0 = performance.now();
+    try {
+      const j = await getJSON(url);
+      const http = j?.__http || {};
+      add({ name: "DexScreener:search", url, status: http.status, ms: http.ms ?? Math.round(performance.now() - t0), ok: true });
+      dsPairs = (j?.pairs || []).filter((p: any) => (p?.chainId || "").toLowerCase() === "base");
+    } catch (e: any) {
+      add({ name: "DexScreener:search", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+    }
+  }
+
+  // 3) GeckoTerminal fallback → normalize to ds-like pairs
+  let pairs = dsPairs;
+  if (!pairs.length) {
+    const url = `https://api.geckoterminal.com/api/v2/networks/base/tokens/${addr}?include=top_pools`;
+    const t0 = performance.now();
+    try {
+      const j = await getJSON(url, { headers: { "Accept": "application/json" } });
+      const http = j?.__http || {};
+      add({ name: "GeckoTerminal:token+top_pools", url, status: http.status, ms: http.ms ?? Math.round(performance.now() - t0), ok: true });
+
+      const pools = Array.isArray(j?.included) ? j.included.filter((x: any) => x?.type === "pool") : [];
+      pairs = pools.map((p: any) => {
+        const attrs = p?.attributes || {};
+        // Normalize to a minimal DexScreener-like shape we use downstream
+        return {
+          chainId: "base",
+          dexId: attrs?.dex || attrs?.dex_slug,
+          url: attrs?.url,
+          baseToken: { address: addr, name: j?.data?.attributes?.name, symbol: j?.data?.attributes?.symbol },
+          liquidity: { usd: Number(attrs?.reserve_in_usd ?? attrs?.liquidity_usd ?? 0) },
+          txns: {
+            h24: {
+              buys: Number(attrs?.buys_24h ?? 0),
+              sells: Number(attrs?.sells_24h ?? 0),
+            },
+          },
+        };
+      });
+    } catch (e: any) {
+      add({ name: "GeckoTerminal:token+top_pools", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+    }
+  }
+
+  return { pairs, _diagnostics: diags };
 }
 
-/** ---------- GoPlus (token security) ---------- */
-export async function fetchGoPlus(addr: Address, debug = false) {
+/* ---------------- GoPlus (token security) ---------------- */
+export async function fetchGoPlus(addr: Address): Promise<UpstreamBundle<{ result: any }>> {
   const url = `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`;
   const headers: HeadersInit = {};
   if (process.env.GOPLUS_API_KEY) headers["Authorization"] = process.env.GOPLUS_API_KEY!;
-
-  const r = await getJSON(url, { headers });
-  return {
-    result: r.data ?? { result: {} },
-    _diag: debug ? [{ name: "GoPlus", url, ok: r.ok, status: r.status, ms: r.ms, note: r.error }] : undefined,
-  };
+  const diags: Diag[] = [];
+  const t0 = performance.now();
+  try {
+    const j = await getJSON(url, { headers });
+    const http = j?.__http || {};
+    diags.push({ name: "GoPlus:token_security", url, status: http.status, ms: http.ms ?? Math.round(performance.now() - t0), ok: true });
+    return { result: j?.result ?? {}, _diagnostics: diags };
+  } catch (e: any) {
+    diags.push({ name: "GoPlus:token_security", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+    return { result: {}, _diagnostics: diags };
+  }
 }
 
-/** ---------- Honeypot.is (no key needed) ---------- */
-export async function fetchHoneypot(addr: Address, debug = false) {
+/* ---------------- Honeypot.is ---------------- */
+export async function fetchHoneypot(addr: Address): Promise<UpstreamBundle<any>> {
   const url = `https://api.honeypot.is/v2/IsHoneypot?chain=base&address=${addr}`;
-  const r = await getJSON(url);
-
-  const ok = !!r.data && (r.status === 200);
-  const IsHoneypot = (r.data as any)?.IsHoneypot;
-  const honeypotResult = (r.data as any)?.honeypotResult;
-
-  return {
-    ok,
-    IsHoneypot,
-    honeypotResult,
-    _diag: debug ? [{ name: "Honeypot", url, ok: r.ok, status: r.status, ms: r.ms, note: r.error }] : undefined,
-  };
-}
-
-/** ---------- Optional: name → address (kept for tools/tests) ---------- */
-export async function resolveName(q: string): Promise<Address> {
-  const s = await getJSON(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`);
-  const firstBase = (s.data as any)?.pairs?.find(
-    (p: any) => (p.chainId || "").toLowerCase() === "base" && p.baseToken?.address
-  )?.baseToken?.address;
-  if (!firstBase) throw new Error("Could not resolve token on Base from search.");
-  return firstBase as Address;
+  const diags: Diag[] = [];
+  const t0 = performance.now();
+  try {
+    const j = await getJSON(url);
+    const http = j?.__http || {};
+    diags.push({ name: "Honeypot:is", url, status: http.status, ms: http.ms ?? Math.round(performance.now() - t0), ok: true });
+    return Object.assign(j ?? {}, { _diagnostics: diags });
+  } catch (e: any) {
+    diags.push({ name: "Honeypot:is", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+    return { _diagnostics: diags };
+  }
 }
