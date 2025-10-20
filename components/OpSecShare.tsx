@@ -13,18 +13,28 @@ export default function OpSecShare({
   siteUrl: string;
 }) {
   const share = async () => {
-    const embeds = [siteUrl, imageUrl].filter(Boolean);
+    // Build a tuple for embeds to satisfy the SDK typing:
+    // [] | [string] | [string, string]
+    let embedsTuple: [] | [string] | [string, string] | undefined;
+
+    const hasSite = typeof siteUrl === "string" && siteUrl.length > 0;
+    const hasImg = typeof imageUrl === "string" && imageUrl.length > 0;
+
+    if (hasSite && hasImg) embedsTuple = [siteUrl, imageUrl];
+    else if (hasSite) embedsTuple = [siteUrl];
+    else if (hasImg) embedsTuple = [imageUrl];
+    else embedsTuple = undefined; // no embeds
 
     if (inFarcaster()) {
       try {
         await sdk.actions.composeCast({
           text: summary,
-          embeds, // string[]
+          embeds: embedsTuple,
         });
-      } catch (e) {
-        // Fallback: try open a share intent if composeCast fails for any reason
+      } catch {
+        // Fallback share intent
         await sdk.actions.openShare({
-          cast: { text: summary, embeds },
+          cast: { text: summary, embeds: embedsTuple },
         } as any);
       }
     } else {
