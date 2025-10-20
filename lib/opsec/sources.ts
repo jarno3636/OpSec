@@ -96,8 +96,7 @@ export async function fetchDexScreener(addr: Address) {
 
 /* ---------- Honeypot.is ---------- */
 export async function fetchHoneypot(addr: Address) {
-  const key = process.env.HONEYPOT_API_KEY || "";
-  const url = `https://api.honeypot.is/v2/IsHoneypot?chain=base&address=${addr}${key ? `&key=${encodeURIComponent(key)}` : ""}`;
+  const url = `https://api.honeypot.is/v2/IsHoneypot?chain=base&address=${addr}`;
   const r = await jSoft(url, undefined, "Honeypot.is");
   return r.ok ? (r.data as any) : { ok: false, _errors: [r.error].filter(Boolean) };
 }
