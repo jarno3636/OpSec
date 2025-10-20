@@ -36,9 +36,10 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   );
 
   // Ownership (robust: tries owner() then getOwner(); never throws)
-  const ownerAddr = (await readOwner(address)) || "0x0000000000000000000000000000000000000000";
-  const renounced = isZero(ownerAddr) || isDead(ownerAddr);
-  findings.push(P(renounced, 8, renounced ? "Ownership renounced/0xdead" : `Owner retains privileges: ${ownerAddr}`, "owner"));
+  const ZERO = "0x0000000000000000000000000000000000000000";
+  const ownerAddrStr = String((await readOwner(address)) || ZERO);
+  const renounced = isZero(ownerAddrStr) || isDead(ownerAddrStr);
+  findings.push(P(renounced, 8, renounced ? "Ownership renounced/0xdead" : `Owner retains privileges: ${ownerAddrStr}`, "owner"));
 
   // GoPlus (cast to any to dodge strict result typing)
   const gpRec: any = first(gpToArr(raw.gp));
@@ -122,7 +123,6 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const score = scoreFromFindings(findings);
   const grade = scoreToGrade(score);
 
-  // Take the 6 most-weighted items for “Summary”
   const summary = findings.slice().sort((a, b) => b.weight - a.weight).slice(0, 6);
 
   // Identity: prefer BaseScan tokeninfo, then source, then market pair
@@ -173,7 +173,6 @@ function pickMainPair(pairs: any[]) {
   return pairs
     .slice()
     .sort((a: any, b: any) => {
-      // prefer Base, then by liquidity USD desc
       const ab = (a?.chainId || "").toString().toLowerCase() === "base" ? 1 : 0;
       const bb = (b?.chainId || "").toString().toLowerCase() === "base" ? 1 : 0;
       if (ab !== bb) return bb - ab;
@@ -182,8 +181,9 @@ function pickMainPair(pairs: any[]) {
 }
 
 const DEAD = "0x000000000000000000000000000000000000dEaD";
-function isZero(a?: string) { return (a || "").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
-function isDead(a?: string) { return (a || "").toLowerCase() === DEAD.toLowerCase(); }
+// widened to tolerate any?
+function isZero(a?: any) { return String(a || "").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
+function isDead(a?: any) { return String(a || "").toLowerCase() === DEAD.toLowerCase(); }
 
 function hTokenQty(h: any): number | string | undefined {
   return h?.TokenHolderQuantity ?? h?.Balance ?? 0;
