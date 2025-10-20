@@ -27,11 +27,17 @@ export default function Page() {
       </header>
 
       <div className="flex gap-2 mb-4">
-        <input className="flex-1 rounded-xl px-4 py-3 bg-white/5 border border-white/10"
-               placeholder="Paste Base token address or search by name/symbol"
-               value={q} onChange={e=>setQ(e.target.value)} />
-        <button onClick={analyze} disabled={loading}
-          className="px-4 py-3 rounded-xl bg-scan text-black font-semibold">
+        <input
+          className="flex-1 rounded-xl px-4 py-3 bg-white/5 border border-white/10"
+          placeholder="Paste Base token address or search by name/symbol"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button
+          onClick={analyze}
+          disabled={loading}
+          className="px-4 py-3 rounded-xl bg-scan text-black font-semibold"
+        >
           {loading ? "Scanning…" : "Analyze"}
         </button>
       </div>
