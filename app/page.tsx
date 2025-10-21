@@ -174,63 +174,71 @@ export default function HomePage() {
             ))}
           </section>
 
-          {/* SCORING EXPLAINER */}
+          {/* SCORING EXPLAINER (synced to lib/opsec/score.ts weights) */}
           <section className="mt-8 rounded-2xl border border-white/10 p-6 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.06),transparent_60%)] shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
             <h2 className="text-2xl font-bold">How the Score Works</h2>
             <p className="mt-1 text-white/70 max-w-3xl">
-              OpSec produces a 0–100 score and a letter grade. Each category is a
-              weighted sum of pass/fail checks. We surface the most impactful
-              findings as a quick “summary” and show detailed items below.
+              OpSec produces a 0–100 score and a letter grade. Each category aggregates
+              weighted pass/fail checks. The most impactful findings appear in the
+              report “Summary,” with detailed items below.
             </p>
 
             <div className="mt-5 grid md:grid-cols-5 gap-3 text-sm">
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
                 <div className="font-semibold">Contract &amp; Privileges</div>
-                <div className="text-white/60">30%</div>
+                <div className="text-white/60">≈32%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
-                  <li>• Source verified</li>
-                  <li>• Proxy &amp; implementation</li>
+                  <li>• Source verified (BaseScan)</li>
+                  <li>• Proxy &amp; implementation (EIP-1967)</li>
                   <li>• Ownership / renounce</li>
-                  <li>• Blacklist / pause / mint</li>
+                  <li>• Blacklist / whitelist / pause hints</li>
                 </ul>
               </div>
+
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
                 <div className="font-semibold">Supply &amp; Holders</div>
-                <div className="text-white/60">20%</div>
+                <div className="text-white/60">≈21%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
-                  <li>• Top holder %</li>
-                  <li>• Team/deployer buckets</li>
-                  <li>• Airdrop noise</li>
+                  <li>• Top holder % (warn ≥ 20%)</li>
+                  <li>• Team/deployer-like buckets</li>
+                  <li>• Airdrop pattern noise</li>
                 </ul>
               </div>
+
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
                 <div className="font-semibold">Liquidity</div>
-                <div className="text-white/60">20%</div>
+                <div className="text-white/60">≈21%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
-                  <li>• Depth (USD)</li>
-                  <li>• LP locks/burn</li>
-                  <li>• Pull/mint risk</li>
+                  <li>• Depth in USD (ok ≥ $50k)</li>
+                  <li>• LP locks/burn evidence</li>
+                  <li>• Recent LP pulls / mint risk</li>
                 </ul>
               </div>
+
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
                 <div className="font-semibold">Market Behavior</div>
-                <div className="text-white/60">15%</div>
+                <div className="text-white/60">≈10%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
-                  <li>• 24h buy/sell balance</li>
-                  <li>• Wallet dispersion (heuristic)</li>
-                  <li>• Tax swing Δ</li>
+                  <li>• 24h buy/sell balance (≈ 0.5×–2.0×)</li>
+                  <li>• Tax swing Δ (warn if |Δ| &gt; 10%)</li>
                 </ul>
               </div>
+
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
                 <div className="font-semibold">Security Signals</div>
-                <div className="text-white/60">15%</div>
+                <div className="text-white/60">≈16%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
                   <li>• Honeypot check</li>
-                  <li>• GoPlus flags</li>
-                  <li>• Socials on explorer</li>
+                  <li>• GoPlus critical flags</li>
+                  <li>• Socials present on explorer</li>
                 </ul>
               </div>
             </div>
+
+            <p className="mt-4 text-xs text-white/50">
+              Thresholds reflect current heuristics in the scoring engine: Liquidity ok ≥ $50k;
+              Buy/Sell balance ~0.5×–2.0×; Top holder warning ≥ 20%; Large tax swing warning |Δ| &gt; 10%.
+            </p>
 
             <div className="mt-6">
               <Link
