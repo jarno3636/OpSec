@@ -1,4 +1,6 @@
+// app/opsec/page.tsx
 "use client";
+
 import { useCallback, useMemo, useState } from "react";
 import AgencyChrome from "@/components/AgencyChrome";
 import ScoreBadge from "@/components/ScoreBadge";
@@ -41,7 +43,7 @@ export default function Page() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || `Request failed (${res.status})`);
       setR(payload);
-      // auto-open table if diagnostics present and debugMode is on
+      // Auto-open table if diagnostics present and debugMode is on
       if (debugMode && Array.isArray(payload?.upstreamDiagnostics) && payload.upstreamDiagnostics.length) {
         setShowDiag(true);
       }
@@ -75,8 +77,8 @@ export default function Page() {
   // Friendly placeholders based on findings
   const reason = (key: "markets" | "erc20", fallback = "—") => {
     if (!r) return fallback;
-    if (key === "erc20" && r.findings?.some(f => f.key === "erc20")) return "Not an ERC-20";
-    if (key === "markets" && r.findings?.some(f => f.key === "markets" && f.note?.includes("No Base DEX pairs"))) {
+    if (key === "erc20" && r.findings?.some((f) => f.key === "erc20")) return "Not an ERC-20";
+    if (key === "markets" && r.findings?.some((f) => f.key === "markets" && f.note?.includes("No Base DEX pairs"))) {
       return "No Base DEX pairs";
     }
     return fallback;
@@ -85,15 +87,16 @@ export default function Page() {
   return (
     <AgencyChrome>
       <div className="mx-auto w-full max-w-5xl px-4">
-        <header className="mb-6 flex items-center justify-between">
+        {/* Header */}
+        <header className="mb-6 flex items-center justify-between gap-4">
           <div className="text-center md:text-left w-full">
             <h1 className="text-4xl font-black tracking-tight">OPSEC</h1>
             <p className="mt-1 text-white/70">Professional token due-diligence on Base</p>
           </div>
 
-          {/* Debug mode toggle */}
+          {/* Debug mode toggle (desktop) */}
           <div className="hidden sm:flex items-center gap-2 text-xs">
-            <label className="inline-flex items-center gap-2 select-none">
+            <label className="inline-flex items-center gap-2 select-none cursor-pointer">
               <input
                 type="checkbox"
                 className="accent-emerald-400"
@@ -110,7 +113,7 @@ export default function Page() {
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 opacity-60">
-                <svg width="18" height="18" viewBox="0 0 24 24" className="block">
+                <svg width="18" height="18" viewBox="0 0 24 24" className="block" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M10 18a8 8 0 1 1 5.292-14.004A8 8 0 0 1 10 18m12.707 3.293l-6.27-6.27A10 10 0 1 0 12 22a9.963 9.963 0 0 0 5.023-1.373l6.27 6.27z"
@@ -142,6 +145,7 @@ export default function Page() {
               onClick={analyze}
               disabled={disabled}
               className="px-4 py-3 rounded-xl bg-scan text-black font-semibold flex items-center justify-center gap-2 disabled:opacity-70"
+              aria-label="Analyze token"
             >
               {loading && <Spinner size={16} />}
               {loading ? "Scanning…" : "Analyze"}
@@ -150,7 +154,7 @@ export default function Page() {
 
           {/* STATUS / ERROR + mobile debug toggle */}
           <div className="mt-3 flex items-center justify-between">
-            <div className="min-h-[1.75rem]">
+            <div className="min-h-[1.75rem]" aria-live="polite">
               {loading && scanningText}
               {!loading && err && (
                 <span className="inline-flex items-center text-xs text-red-300 px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10">
@@ -159,7 +163,7 @@ export default function Page() {
               )}
             </div>
             <div className="sm:hidden">
-              <label className="inline-flex items-center gap-2 text-xs select-none">
+              <label className="inline-flex items-center gap-2 text-xs select-none cursor-pointer">
                 <input
                   type="checkbox"
                   className="accent-emerald-400"
@@ -213,8 +217,7 @@ export default function Page() {
                   <div className="space-y-1 text-sm break-words hyphens-auto">
                     {r.summary.map((s, i) => (
                       <div key={i} className={s.ok ? "text-green-400" : "text-red-400"}>
-                        {s.ok ? "✓" : "✗"}{" "}
-                        <span className="font-normal">{prettifyHexIn(s.note)}</span>
+                        {s.ok ? "✓" : "✗"} <span className="font-normal">{prettifyHexIn(s.note)}</span>
                       </div>
                     ))}
                   </div>
@@ -241,10 +244,7 @@ export default function Page() {
                           : reason("erc20", "—")
                       }
                     />
-                    <KeyValue
-                      k="Buy/Sell (24h)"
-                      v={r.metrics.buySellRatio ?? reason("markets", "—")}
-                    />
+                    <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? reason("markets", "—")} />
                   </div>
                 </div>
               </div>
@@ -269,14 +269,16 @@ export default function Page() {
               {Array.isArray((r as any).upstreamDiagnostics) && (
                 <div className="mt-4">
                   <button
-                    onClick={() => setShowDiag(v => !v)}
+                    onClick={() => setShowDiag((v) => !v)}
                     className="text-xs px-3 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
+                    aria-expanded={showDiag}
+                    aria-controls="opsec-debug-table"
                   >
                     {showDiag ? "Hide" : "Show"} debug
                   </button>
                   {showDiag && (
                     <div className="mt-2 overflow-x-auto rounded-lg border border-white/10">
-                      <table className="w-full text-[11px]">
+                      <table id="opsec-debug-table" className="w-full text-[11px]">
                         <thead className="bg-white/5">
                           <tr>
                             <th className="p-2 text-left">Upstream</th>
