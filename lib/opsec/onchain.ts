@@ -30,14 +30,6 @@ export async function readMetadata(address: Address) {
   return { name, symbol, decimals, totalSupply };
 }
 
-/** Generic reads for LP lock % (LP token is an ERC-20) */
-export async function readTotalSupply(token: Address) {
-  return await safeRead<bigint>(() => (baseClient as any).readContract({ address: token, abi: ERC20_METADATA as any, functionName: "totalSupply" }));
-}
-export async function readBalanceOf(token: Address, holder: Address) {
-  return await safeRead<bigint>(() => (baseClient as any).readContract({ address: token, abi: ERC20_METADATA as any, functionName: "balanceOf", args: [holder] }));
-}
-
 export async function readOwner(address: Address) {
   const owner  = await safeRead(() => (baseClient as any).readContract({ address, abi: OWNABLE as any, functionName: "owner" }));
   if (owner && owner !== "0x0000000000000000000000000000000000000000") return owner as string;
@@ -49,7 +41,39 @@ export async function readPaused(address: Address) {
   return await safeRead(() => (baseClient as any).readContract({ address, abi: PAUSABLE as any, functionName: "paused" }));
 }
 
-// Optional surfaces — only use for hints; prefer GoPlus for final signals
+// ---------- NEW: ERC-20 totalSupply & balanceOf ----------
+const ERC20_BALANCE_OF = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+] as const;
+
+export async function readTotalSupply(token: Address) {
+  return await safeRead(() =>
+    (baseClient as any).readContract({
+      address: token,
+      abi: ERC20_METADATA as any,
+      functionName: "totalSupply",
+    })
+  );
+}
+
+export async function readBalanceOf(token: Address, holder: Address) {
+  return await safeRead(() =>
+    (baseClient as any).readContract({
+      address: token,
+      abi: ERC20_BALANCE_OF as any,
+      functionName: "balanceOf",
+      args: [holder],
+    })
+  );
+}
+// --------------------------------------------------------
+
 export async function readBlacklistFlags(address: Address, target?: Address) {
   if (!target) return {};
   const isBlacklisted = await safeRead(() =>
