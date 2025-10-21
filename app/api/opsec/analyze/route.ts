@@ -1,11 +1,13 @@
 // app/api/opsec/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, type Address } from "viem";
-import { fetchBaseScan, fetchGoPlus, fetchHoneypot, fetchMarkets } from "@/lib/opsec/sources";
+import { fetchBaseScan, fetchGoPlus, fetchHoneypot, fetchMarkets, fetchSocials } from "@/lib/opsec/sources";
 import { computeReport } from "@/lib/opsec/score";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+/** Vercel/Next: allow up to 45s for this route */
+export const maxDuration = 45;
 
 export async function GET(req: NextRequest) {
   const qRaw = (req.nextUrl.searchParams.get("query") || "").trim();
@@ -20,14 +22,15 @@ export async function GET(req: NextRequest) {
   const address = qRaw as Address;
 
   try {
-    const [bs, markets, gp, hp] = await Promise.all([
+    const [bs, markets, gp, hp, socials] = await Promise.all([
       fetchBaseScan(address),
       fetchMarkets(address),
       fetchGoPlus(address),
       fetchHoneypot(address),
+      fetchSocials(address),
     ]);
 
-    const report = await computeReport(address, { bs, markets, gp, hp } as any);
+    const report = await computeReport(address, { bs, markets, gp, hp, socials } as any);
 
     const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
     report.imageUrl = `${site}/api/opsec/og?grade=${report.grade}&name=${encodeURIComponent(
@@ -40,12 +43,16 @@ export async function GET(req: NextRequest) {
       ...(markets?._diagnostics ?? []),
       ...(gp?._diagnostics ?? []),
       ...(hp?._diagnostics ?? []),
+      ...(socials?._diagnostics ?? []),
     ];
 
     const payload = debug ? { ...report, upstreamDiagnostics, debug: true } : report;
     return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
-    return NextResponse.json({ error: "internal_error", message: e?.message ?? "Unexpected failure" }, { status: 500 });
+    return NextResponse.json(
+      { error: "internal_error", message: e?.message ?? "Unexpected failure" },
+      { status: 500 }
+    );
   }
 }
