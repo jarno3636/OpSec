@@ -1,0 +1,22 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjExMjExOTMsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHhmNTYwMzNDMTkxYjY2NTA0QWQ0Q0Y4NzMyM0E3NzNGRDg2RGM1MGFkIn0",
+    "payload": "eyJkb21haW4iOiJvcHNlYy1taW5pLnZlcmNlbC5hcHAifQ",
+    "signature": "5IMVnXO9qY0VXC3FANQf2uwtzlS+SDvuW/npye4yhZ9cUUd5+vzGcH1HFVfR0t/EcJ4Z5jJC8AIX+9NNgnisEhw="
+  },
+  "frame": {
+    "version": "1",
+    "name": "OPSEC — Token Due Diligence",
+    "iconUrl": "https://opsec-mini.vercel.app/icon.png",
+    "homeUrl": "https://opsec-mini.vercel.app",
+    "imageUrl": "https://opsec-mini.vercel.app/image.png",
+    "buttonTitle": "Check this out",
+    "splashImageUrl": "https://opsec-mini.vercel.app/splash.png",
+    "splashBackgroundColor": "#eeccff",
+    "webhookUrl": "https://opsec-mini.vercel.app/api/webhook"
+  },
+  "chain": "eip155:8453",
+  "baseBuilder": {
+    "ownerAddress": "0x7fd97A417F64d2706cF5C93c8fdf493EdA42D25c"
+  }
+}
