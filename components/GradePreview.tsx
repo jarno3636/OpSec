@@ -5,9 +5,7 @@ import type { OpSecReport } from "@/lib/opsec/types";
 function Dot({ ok }: { ok: boolean }) {
   return (
     <span
-      className={`inline-block h-2.5 w-2.5 rounded-full mr-2 ${
-        ok ? "bg-emerald-400" : "bg-red-400"
-      }`}
+      className={`inline-block h-2.5 w-2.5 rounded-full mr-2 ${ok ? "bg-emerald-400" : "bg-red-400"}`}
       aria-hidden
     />
   );
@@ -22,14 +20,34 @@ function Pill({ k, v }: { k: string; v: string }) {
   );
 }
 
+const fmtUsd = (n?: number) => {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
+  // Compact when large, e.g. $283.8k
+  if (n >= 1000) {
+    const compact = Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+    // Ensure it always starts with $
+    return `$${compact}`;
+  }
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+};
+
+const fmtPct = (n?: number) => (typeof n === "number" && Number.isFinite(n) ? `${n.toFixed(1)}%` : "—");
+const fmtRatio = (x?: string | number) => {
+  if (x === "∞") return "∞";
+  const v = typeof x === "number" ? x : typeof x === "string" ? Number(x) : NaN;
+  if (!Number.isFinite(v)) return "—";
+  return `${v.toFixed(2)}x`;
+};
+
 export default function GradePreview({ r }: { r: OpSecReport }) {
   const [open, setOpen] = useState(false);
 
+  const tokenName = (r.symbol || r.name || "TOKEN").toUpperCase();
   const liq = typeof r.metrics?.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined;
   const top = typeof r.metrics?.topHolderPct === "number" ? r.metrics.topHolderPct : undefined;
   const ratio = r.metrics?.buySellRatio;
 
-  // pick findings we want to headline
+  // Pull key findings we want to headline
   const f = useMemo(() => {
     const byKey = Object.fromEntries((r.findings || []).map((x) => [x.key, x]));
     return {
@@ -40,36 +58,22 @@ export default function GradePreview({ r }: { r: OpSecReport }) {
     };
   }, [r, top]);
 
-  // helpers
-  const fmtUsd = (n?: number) =>
-    typeof n === "number" ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—";
-  const fmtPct = (n?: number) =>
-    typeof n === "number" ? `${n.toFixed(1)}%` : "—";
-  const fmtRatio = (x?: string) => (x ? `${x}x` : "—");
+  // Why this grade (heaviest negatives)
+  const topNegs = useMemo(() => {
+    const neg = (r.findings || []).filter((x) => !x.ok);
+    return neg.sort((a, b) => b.weight - a.weight).slice(0, 4);
+  }, [r.findings]);
 
   return (
     <section className="rounded-2xl border border-white/10 p-5 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.05),transparent_60%)] overflow-hidden">
-      {/* Top row */}
+      {/* Top row: token + address (no grade badge here) */}
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <div className="text-xs uppercase tracking-widest text-white/50 mb-2">Live Preview</div>
-          <h3 className="text-lg font-semibold">Grade</h3>
-        </div>
-        <div
-          className={`h-14 w-14 rounded-2xl flex items-center justify-center font-black text-lg ${
-            r.grade === "A"
-              ? "bg-emerald-400 text-black"
-              : r.grade === "B"
-              ? "bg-lime-300 text-black"
-              : r.grade === "C"
-              ? "bg-amber-300 text-black"
-              : r.grade === "D"
-              ? "bg-orange-400 text-black"
-              : "bg-red-500 text-white"
-          }`}
-          aria-label={`Grade ${r.grade}`}
-        >
-          {r.grade}
+          <h3 className="text-lg font-semibold truncate">{tokenName}</h3>
+          {r.address ? (
+            <div className="text-xs text-white/50 font-mono break-all mt-1">{r.address}</div>
+          ) : null}
         </div>
       </div>
 
@@ -84,7 +88,7 @@ export default function GradePreview({ r }: { r: OpSecReport }) {
         <div className="flex items-center">
           <Dot ok={!!f.lp?.ok} />
           <span className={`${f.lp?.ok ? "text-white" : "text-red-300"}`}>
-            {f.lp?.ok ? "LP locked" : "LP lock unknown"}
+            {f.lp?.ok ? f.lp?.note || "LP locked" : f.lp?.note || "LP lock unknown"}
           </span>
         </div>
         <div className="flex items-center">
@@ -96,19 +100,13 @@ export default function GradePreview({ r }: { r: OpSecReport }) {
         {/* Top holder special-line: when number exists show it and color by threshold */}
         <div className="flex items-center">
           <Dot ok={typeof f.topPct === "number" ? f.topPct < 20 : true} />
-          <span
-            className={`${
-              typeof f.topPct === "number" && f.topPct >= 20 ? "text-red-300" : "text-white"
-            }`}
-          >
-            {typeof f.topPct === "number"
-              ? `Top holder ${f.topPct.toFixed(1)}%`
-              : "Top holder —"}
+          <span className={`${typeof f.topPct === "number" && f.topPct >= 20 ? "text-red-300" : "text-white"}`}>
+            {typeof f.topPct === "number" ? `Top holder ${fmtPct(f.topPct)}` : "Top holder —"}
           </span>
         </div>
       </div>
 
-      {/* metric pills */}
+      {/* Metric pills */}
       <div className="mt-4 grid grid-cols-3 gap-2">
         <Pill k="Liquidity" v={fmtUsd(liq)} />
         <Pill k="Top Holder" v={fmtPct(top)} />
@@ -128,6 +126,16 @@ export default function GradePreview({ r }: { r: OpSecReport }) {
         {open && (
           <div className="mt-3 space-y-3 text-sm">
             <Detail
+              title="Why this grade"
+              good="Passing items increase the score via weighted checks."
+              bad="The items below reduced the score the most:"
+              refNote={
+                topNegs.length
+                  ? topNegs.map((x) => `• ${x.note} (w:${x.weight})`).join("\n")
+                  : "No major negatives."
+              }
+            />
+            <Detail
               title="Source verification"
               good="Contract is verified on BaseScan with readable source."
               bad="Bytecode-only or unverifiable source reduces transparency."
@@ -146,10 +154,12 @@ export default function GradePreview({ r }: { r: OpSecReport }) {
               title="Market health"
               good="24h order flow looks balanced; liquidity depth supports trading."
               bad="Thin or heavily skewed flow; shallow liquidity."
-              refNote={
-                (typeof liq === "number" ? `Liquidity ≈ ${fmtUsd(liq)}` : "") +
-                (r.metrics?.buySellRatio ? ` • Buy/Sell ${fmtRatio(r.metrics.buySellRatio)}` : "")
-              }
+              refNote={[
+                typeof liq === "number" ? `Liquidity ≈ ${fmtUsd(liq)}` : undefined,
+                r.metrics?.buySellRatio ? `Buy/Sell ${fmtRatio(r.metrics.buySellRatio)}` : undefined,
+              ]
+                .filter(Boolean)
+                .join(" • ")}
             />
             <Detail
               title="Holder distribution"
@@ -161,12 +171,10 @@ export default function GradePreview({ r }: { r: OpSecReport }) {
               title="Security screens"
               good="No critical GoPlus/Honeypot flags."
               bad="One or more security flags present; review tokens/approvals."
-              refNote={
-                r.findings
-                  .filter((x) => ["goplus", "honeypot", "blacklist", "tax_swing"].includes(x.key))
-                  .map((x) => x.note)
-                  .join(" • ")
-              }
+              refNote={r.findings
+                .filter((x) => ["goplus", "honeypot", "blacklist", "tax_swing"].includes(x.key))
+                .map((x) => x.note)
+                .join(" • ")}
             />
           </div>
         )}
@@ -187,7 +195,7 @@ function Detail({
   refNote?: string;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 p-3 bg-white/[0.03]">
+    <div className="rounded-lg border border-white/10 p-3 bg-white/[0.03] whitespace-pre-wrap">
       <div className="font-medium mb-1">{title}</div>
       <ul className="list-disc pl-5 space-y-1 text-white/80">
         <li className="text-emerald-300/90">{good}</li>
