@@ -1,42 +1,30 @@
 // components/ShareRow.tsx
 "use client";
-import { sdk } from "@farcaster/miniapp-sdk";
-import { inFarcaster } from "@/lib/miniapp";
-import { useMemo, useState } from "react";
+
+import { useMemo } from "react";
+import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
 
 type ShareRowProps = {
-  /** Optional: if provided, we’ll compose the summary for you. */
-  token?: string;          // name or symbol, e.g., "DEGEN"
+  token?: string;
   grade?: "A" | "B" | "C" | "D" | "F";
-  liquidityUSD?: number;   // e.g., 123456
-  topHolderPct?: number;   // e.g., 12.3
+  liquidityUSD?: number;
+  topHolderPct?: number;
   buySellRatio?: string | number;
-
-  /** Required: where the full report lives. */
   url: string;
-
-  /** Optional: OG image or badge we want to include as an embed in Farcaster. */
   image?: string;
-
-  /** If you pass a custom summary, we’ll use it verbatim. */
   summary?: string;
 };
 
-export default function ShareRow(props: ShareRowProps) {
-  const {
-    token,
-    grade,
-    liquidityUSD,
-    topHolderPct,
-    buySellRatio,
-    url,
-    image,
-    summary,
-  } = props;
-
-  const [casting, setCasting] = useState(false);
-
-  // Helpers
+export default function ShareRow({
+  token,
+  grade,
+  liquidityUSD,
+  topHolderPct,
+  buySellRatio,
+  url,
+  image,
+  summary,
+}: ShareRowProps) {
   const fmtUsd = (n?: number) =>
     typeof n === "number" ? `$${Math.round(n).toLocaleString()}` : "—";
   const fmtPct = (n?: number) =>
@@ -44,10 +32,9 @@ export default function ShareRow(props: ShareRowProps) {
   const fmtRatio = (r?: string | number) =>
     r === undefined || r === null || r === "" ? "—" : String(r);
 
-  // Compose a clean, compact message when summary isn’t provided
+  // Compose text for Farcaster/X
   const composed = useMemo(() => {
     if (summary && summary.trim()) return summary.trim();
-
     const title = `OPSEC Report${token ? `: ${token}` : ""}`;
     const line1 = grade ? `Grade ${grade}` : undefined;
 
@@ -58,61 +45,34 @@ export default function ShareRow(props: ShareRowProps) {
 
     const line2 = stats.length ? stats.join(" • ") : undefined;
 
-    // Keep it tight; Farcaster/X will handle line breaks nicely
     let text = title;
     if (line1) text += ` — ${line1}`;
     if (line2) text += `\n${line2}`;
 
-    // Keep casts/tweets tidy (soft cap)
-    const CAP = 260; // under common limits w/ URL & embeds
-    if (text.length > CAP) text = text.slice(0, CAP - 1) + "…";
+    if (text.length > 260) text = text.slice(0, 259) + "…";
     return text;
   }, [summary, token, grade, liquidityUSD, topHolderPct, buySellRatio]);
 
-  const cast = async () => {
-    if (!inFarcaster()) {
-      alert("Open this inside a Farcaster Mini App to cast.");
-      return;
-    }
-    setCasting(true);
-    try {
-      // embeds must be [] | [string] | [string, string]
-      const embeds: [] | [string] | [string, string] = image
-        ? ([url, image] as [string, string])
-        : ([url] as [string]);
-
-      await sdk.actions.composeCast({ text: composed, embeds });
-    } catch (e) {
-      console.error("composeCast failed", e);
-      try {
-        await sdk.actions.openUrl(url);
-      } catch {
-        alert("Couldn’t open the cast composer.");
-      }
-    } finally {
-      setCasting(false);
-    }
-  };
-
   const tweet = () => {
-    const u = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
       composed
     )}&url=${encodeURIComponent(url)}`;
-    window.open(u, "_blank");
+    window.open(tweetUrl, "_blank");
   };
 
   return (
     <div className="flex flex-col sm:flex-row gap-3">
-      <button
-        onClick={cast}
-        disabled={casting}
-        className="px-4 py-3 rounded-xl bg-white text-black font-semibold disabled:opacity-60"
+      <ShareToFarcasterButton
+        text={composed}
+        url={url}
+        embeds={image ? [url, image] : [url]}
       >
-        {casting ? "Opening…" : "Cast on Farcaster"}
-      </button>
+        Cast on Farcaster
+      </ShareToFarcasterButton>
+
       <button
         onClick={tweet}
-        className="px-4 py-3 rounded-xl bg-scan text-black font-semibold"
+        className="px-4 py-3 rounded-xl bg-scan text-black font-semibold hover:opacity-90 transition"
       >
         Share on X
       </button>
