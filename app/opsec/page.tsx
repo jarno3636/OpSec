@@ -10,8 +10,9 @@ import ShareRow from "@/components/ShareRow";
 export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
-  const [r, setR] = useState<OpSecReport | null>(null);
+  const [r, setR] = useState<OpSecReport | (OpSecReport & { upstreamDiagnostics?: any[] }) | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [showDiag, setShowDiag] = useState(false);
 
   const disabled = loading || !q.trim();
 
@@ -56,6 +57,15 @@ export default function Page() {
     ),
     []
   );
+
+  // Helpers to render friendly placeholders based on findings
+  const reason = (key: string, fallback = "—") => {
+    if (!r) return fallback;
+    if (r.findings?.some(f => f.key === "erc20")) return "Not an ERC-20";
+    const noPairs = r.findings?.some(f => f.key === "markets" && f.note?.includes("No Base DEX pairs"));
+    if (key === "markets" && noPairs) return "No Base DEX pairs";
+    return fallback;
+  };
 
   return (
     <AgencyChrome>
@@ -171,7 +181,7 @@ export default function Page() {
                       v={
                         typeof r.metrics.liquidityUSD === "number"
                           ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
-                          : "—"
+                          : reason("markets", "—")
                       }
                     />
                     <KeyValue
@@ -179,10 +189,13 @@ export default function Page() {
                       v={
                         typeof r.metrics.topHolderPct === "number"
                           ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
-                          : "—"
+                          : reason("erc20", "—")
                       }
                     />
-                    <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? "—"} />
+                    <KeyValue
+                      k="Buy/Sell (24h)"
+                      v={r.metrics.buySellRatio ?? reason("markets", "—")}
+                    />
                   </div>
                 </div>
               </div>
@@ -201,6 +214,44 @@ export default function Page() {
                   />
                 </div>
               </div>
+
+              {/* Debug (appears only if API returned diagnostics via ?debug=1) */}
+              {(r as any)?.upstreamDiagnostics && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => setShowDiag(v => !v)}
+                    className="text-xs px-3 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
+                  >
+                    {showDiag ? "Hide" : "Show"} debug
+                  </button>
+                  {showDiag && (
+                    <div className="mt-2 overflow-x-auto rounded-lg border border-white/10">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-white/5">
+                          <tr>
+                            <th className="p-2 text-left">Upstream</th>
+                            <th className="p-2 text-left">Status</th>
+                            <th className="p-2 text-left">Time (ms)</th>
+                            <th className="p-2 text-left">Note</th>
+                            <th className="p-2 text-left">URL</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(r as any).upstreamDiagnostics.map((d: any, i: number) => (
+                            <tr key={i} className="odd:bg-white/[0.03]">
+                              <td className="p-2 whitespace-nowrap">{d.name}</td>
+                              <td className="p-2 whitespace-nowrap">{d.status ?? (d.ok ? "OK" : "—")}</td>
+                              <td className="p-2 whitespace-nowrap">{d.ms}</td>
+                              <td className="p-2">{d.note || ""}</td>
+                              <td className="p-2 max-w-[280px] truncate">{d.url}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
         </div>
