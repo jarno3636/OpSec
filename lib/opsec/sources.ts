@@ -1,9 +1,8 @@
-// lib/opsec/sources.ts
 import type { Address } from "viem";
 
 /* ---------------- generic fetch with retry/backoff ---------------- */
-const UA = "opsec-miniapp/1.1";
-const TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 12_000);
+const UA = "opsec-miniapp/1.2";
+const TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 30_000); // ⬆ extended timeout
 const MAX_RETRIES = 3;
 
 export type Diag = { name: string; url: string; status?: number; ok: boolean; ms: number; note?: string };
@@ -13,34 +12,35 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 function backoff(attempt: number) {
-  // 250ms, 500ms, 1000ms + small jitter
   const base = 250 * Math.pow(2, attempt);
   const jitter = Math.floor(Math.random() * 120);
   return base + jitter;
 }
 
+/**
+ * Robust JSON fetcher without AbortController — allows long-lived responses.
+ */
 async function getJSON(url: string, init: RequestInit = {}) {
   let lastErr: any;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     const started = Date.now();
     try {
+      // Remove Next.js signal aborts (Node runtime safe)
       const r = await fetch(url, {
         ...init,
-        signal: ctrl.signal,
+        signal: undefined,
         headers: { Accept: "application/json", "User-Agent": UA, ...(init.headers || {}) },
         cache: "no-store",
       });
+
+      const ms = Date.now() - started;
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
       const json = await r.json();
-      (json as any).__http = { status: r.status, ms: Date.now() - started };
+      (json as any).__http = { status: r.status, ms };
       return json;
     } catch (e) {
       lastErr = e;
       if (attempt < MAX_RETRIES) await sleep(backoff(attempt));
-    } finally {
-      clearTimeout(t);
     }
   }
   throw lastErr;
@@ -50,7 +50,7 @@ async function getJSON(url: string, init: RequestInit = {}) {
 export async function fetchBaseScan(
   addr: Address
 ): Promise<UpstreamBundle<{ source: any; holders: any; tokeninfo: any }>> {
-  const key = process.env.BASESCAN_KEY || "";
+  const key = process.env.BASESCAN_KEY || "1GKJW9QM28UBJG9H25EYX5V89VEEITVFTF";
   const host = "https://api.basescan.org";
   const q2 = (p: Record<string, string>) =>
     `${host}/v2/api?` + new URLSearchParams({ ...p, chainid: "8453", apikey: key }).toString();
@@ -74,7 +74,13 @@ export async function fetchBaseScan(
       });
       return json;
     } catch (e: any) {
-      diags.push({ name, url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
+      diags.push({
+        name,
+        url,
+        ok: false,
+        ms: Math.round(performance.now() - t0),
+        note: e?.message || "Fetch error",
+      });
       return { result: [] };
     }
   }
@@ -118,12 +124,11 @@ export async function fetchBaseScan(
   return { source, holders, tokeninfo, _diagnostics: diags };
 }
 
-/* ---------------- Markets (DEX Screener first, GeckoTerminal fallback) ---------------- */
+/* ---------------- Markets (DEX Screener + GeckoTerminal) ---------------- */
 export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pairs: any[] }>> {
   const diags: Diag[] = [];
   const add = (d: Diag) => diags.push(d);
 
-  // 1) DexScreener by token
   let dsPairs: any[] = [];
   {
     const url = `https://api.dexscreener.com/latest/dex/tokens/${addr}`;
@@ -144,7 +149,6 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
     }
   }
 
-  // 2) DexScreener search if empty
   if (!dsPairs.length) {
     const url = `https://api.dexscreener.com/latest/dex/search?q=${addr}`;
     const t0 = performance.now();
@@ -160,23 +164,16 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
       });
       dsPairs = (j?.pairs || []).filter((p: any) => (p?.chainId || "").toLowerCase() === "base");
     } catch (e: any) {
-      add({
-        name: "DexScreener:search",
-        url,
-        ok: false,
-        ms: Math.round(performance.now() - t0),
-        note: e?.message,
-      });
+      add({ name: "DexScreener:search", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
     }
   }
 
-  // 3) GeckoTerminal fallback; normalize to DS-like shape
   let pairs = dsPairs;
   if (!pairs.length) {
     const url = `https://api.geckoterminal.com/api/v2/networks/base/tokens/${addr}?include=top_pools`;
     const t0 = performance.now();
     try {
-      const j = await getJSON(url, { headers: { Accept: "application/json" } });
+      const j = await getJSON(url);
       const http = j?.__http || {};
       add({
         name: "GeckoTerminal:token+top_pools",
@@ -185,19 +182,15 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
         ms: http.ms ?? Math.round(performance.now() - t0),
         ok: true,
       });
-
-      const pools = Array.isArray(j?.included) ? j.included.filter((x: any) => x?.type === "pool") : [];
+      const pools = Array.isArray(j?.included)
+        ? j.included.filter((x: any) => x?.type === "pool")
+        : [];
       pairs = pools.map((p: any) => {
         const attrs = p?.attributes || {};
         return {
           chainId: "base",
           dexId: attrs?.dex || attrs?.dex_slug,
           url: attrs?.url,
-          baseToken: {
-            address: addr,
-            name: j?.data?.attributes?.name,
-            symbol: j?.data?.attributes?.symbol,
-          },
           liquidity: { usd: Number(attrs?.reserve_in_usd ?? attrs?.liquidity_usd ?? 0) },
           txns: {
             h24: {
@@ -208,20 +201,14 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
         };
       });
     } catch (e: any) {
-      add({
-        name: "GeckoTerminal:token+top_pools",
-        url,
-        ok: false,
-        ms: Math.round(performance.now() - t0),
-        note: e?.message,
-      });
+      add({ name: "GeckoTerminal:token+top_pools", url, ok: false, ms: Math.round(performance.now() - t0), note: e?.message });
     }
   }
 
   return { pairs, _diagnostics: diags };
 }
 
-/* ---------------- GoPlus (token security) ---------------- */
+/* ---------------- GoPlus ---------------- */
 export async function fetchGoPlus(addr: Address): Promise<UpstreamBundle<{ result: any }>> {
   const url = `https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${addr}`;
   const headers: HeadersInit = {};
