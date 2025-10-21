@@ -1,8 +1,7 @@
-// lib/opsec/score.ts
 import type { Address } from "viem";
 import { clamp, pct } from "./math";
 import type { OpSecReport, Finding } from "./types";
-import { readOwner, readEip1967Implementation } from "./onchain";
+import { readOwner, readEip1967Implementation, readErc20Meta } from "./onchain";
 
 type Raw = {
   bs: any;
@@ -18,6 +17,12 @@ const P = (ok: boolean, weight: number, note: string, key: string): Finding =>
 export async function computeReport(address: Address, raw: Raw): Promise<OpSecReport> {
   const findings: Finding[] = [];
   const metrics: OpSecReport["metrics"] = {};
+
+  /* ---------- ERC-20 sanity ---------- */
+  const erc20 = await readErc20Meta(address);
+  if (!erc20.isErc20) {
+    findings.push(P(false, 10, "Address is not a standard ERC-20 token", "erc20"));
+  }
 
   /* ---------- CONTRACT & PRIVILEGES ---------- */
   const srcRec = raw.bs?.source?.result?.[0] ?? {};
@@ -45,11 +50,9 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const gpRec: any = first(gpToArr(raw.gp));
   if (gpRec) {
     const hasBlacklist = anyTrue([gpRec?.can_blacklist, gpRec?.is_blacklisted, gpRec?.is_anti_whale, gpRec?.is_whitelisted]);
-    findings.push(
-      P(!hasBlacklist, 6,
-        hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls",
-        "blacklist")
-    );
+    findings.push(P(!hasBlacklist, 6,
+      hasBlacklist ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls",
+      "blacklist"));
   }
 
   /* ---------- SUPPLY & HOLDERS ---------- */
@@ -71,8 +74,15 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   }
 
   /* ---------- LIQUIDITY & MARKET BEHAVIOR ---------- */
-  const pairs = (raw.dx?.pairs ?? raw.markets?.pairs ?? []) as any[];
+  const pairs = erc20.isErc20 ? ((raw.dx?.pairs ?? raw.markets?.pairs ?? []) as any[]) : [];
   const mainPair = pickMainPair(pairs);
+
+  if (!erc20.isErc20) {
+    findings.push(P(false, 6, "No market data — not an ERC-20", "markets"));
+  } else if (!mainPair) {
+    findings.push(P(false, 6, "No Base DEX pairs found", "markets"));
+  }
+
   if (mainPair) {
     const liqUSD = num(mainPair?.liquidity?.usd);
     if (isFinite(liqUSD)) {
@@ -125,10 +135,10 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
 
   const summary = findings.slice().sort((a, b) => b.weight - a.weight).slice(0, 6);
 
-  // Identity: prefer BaseScan tokeninfo, then source, then market pair
+  // Identity: prefer on-chain meta, then BaseScan tokeninfo, then source, then market pair
   const ti = raw.bs?.tokeninfo?.result?.[0] ?? {};
-  const name = ti?.tokenName || srcRec?.ContractName || mainPair?.baseToken?.name;
-  const symbol = ti?.tokenSymbol || srcRec?.Symbol || mainPair?.baseToken?.symbol;
+  const name = (erc20.name as string) || ti?.tokenName || srcRec?.ContractName || mainPair?.baseToken?.name;
+  const symbol = (erc20.symbol as string) || ti?.tokenSymbol || srcRec?.Symbol || mainPair?.baseToken?.symbol;
 
   return {
     address,
@@ -181,7 +191,6 @@ function pickMainPair(pairs: any[]) {
 }
 
 const DEAD = "0x000000000000000000000000000000000000dEaD";
-// widened to tolerate any?
 function isZero(a?: any) { return String(a || "").toLowerCase() === "0x0000000000000000000000000000000000000000"; }
 function isDead(a?: any) { return String(a || "").toLowerCase() === DEAD.toLowerCase(); }
 
