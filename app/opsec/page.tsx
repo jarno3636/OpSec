@@ -1,3 +1,4 @@
+// app/opsec/page.tsx
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
@@ -17,13 +18,71 @@ function prettifyHexIn(note: string) {
 }
 const EXPLORER = "https://basescan.org";
 
+/** Normalize user/display-provided handles/urls into a safe clickable url */
+function normUrl(x?: string): string | undefined {
+  if (!x) return;
+  const s = x.trim();
+  if (!s) return;
+  if (/^https?:\/\//i.test(s)) return s;
+  // common handles
+  if (s.startsWith("@")) return `https://twitter.com/${s.slice(1)}`;
+  if (/^t\.me\//i.test(s)) return `https://${s}`;
+  if (/^twitter\.com\//i.test(s)) return `https://${s}`;
+  if (/^github\.com\//i.test(s)) return `https://${s}`;
+  if (/^warpcast\.com\//i.test(s)) return `https://${s}`;
+  if (/^coingecko\.com\//i.test(s)) return `https://${s}`;
+  // otherwise treat as website
+  return `https://${s}`;
+}
+
+type Socials = Partial<{
+  website: string;
+  twitter: string;
+  telegram: string;
+  github: string;
+  warpcast: string;   // Farcaster profile/cast
+  coingecko: string;  // CoinGecko page
+}>;
+
+function extractSocials(r: any): Socials {
+  // Prefer API-attached r.socials if present
+  const s: any = (r && (r.socials || r.meta?.socials)) || {};
+  // Fall back to known explorer fields if your API chose to pass them through
+  // (If not present, this simply returns an empty set and we show quick search)
+  return {
+    website: normUrl(s.website || s.officialSite || s.site),
+    twitter: normUrl(s.twitter),
+    telegram: normUrl(s.telegram),
+    github: normUrl(s.github),
+    warpcast: normUrl(s.warpcast || s.farcaster),
+    coingecko: normUrl(s.coingecko),
+  };
+}
+
+function SocialLink({ href, label }: { href?: string; label: string }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 hover:bg-white/[0.1] text-sm"
+    >
+      <span className="opacity-80">{label}</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" className="opacity-60">
+        <path fill="currentColor" d="M14 3h7v7h-2V6.41l-9.29 9.3l-1.42-1.42l9.3-9.29H14zM5 5h5v2H7v10h10v-3h2v5H5z"/>
+      </svg>
+    </a>
+  );
+}
+
 export default function Page() {
   const params = useSearchParams();
   const debugMode = params.get("debug") === "1";
 
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
-  const [r, setR] = useState<(OpSecReport & { upstreamDiagnostics?: any[] }) | null>(null);
+  const [r, setR] = useState<(OpSecReport & { upstreamDiagnostics?: any[]; socials?: Socials }) | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showDiag, setShowDiag] = useState(false);
 
@@ -45,7 +104,11 @@ export default function Page() {
       const res = await fetch(url, { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || `Request failed (${res.status})`);
-      setR(payload);
+
+      // attach normalized socials (if API provided any)
+      const socials = extractSocials(payload);
+      setR({ ...payload, socials });
+
       if (debugMode && Array.isArray(payload?.upstreamDiagnostics) && payload.upstreamDiagnostics.length) {
         setShowDiag(true);
       }
@@ -69,7 +132,7 @@ export default function Page() {
     () => (
       <span className="inline-flex items-center gap-2 text-xs text-white/80 px-3 py-1 rounded-lg border border-white/10 bg-white/5">
         <Spinner size={14} />
-        Running checks — BaseScan • GoPlus • DEX Screener • Honeypot
+        Running checks — BaseScan • GoPlus • DEX Screener • Honeypot • Socials
         <span className="animate-pulse">…</span>
       </span>
     ),
@@ -95,6 +158,26 @@ export default function Page() {
   const taxSwing  = f("tax_swing")?.note;
   const gpNote    = f("goplus")?.note;
   const hpNote    = f("honeypot")?.note;
+
+  // socials
+  const socials = extractSocials(r);
+  const hasSomeSocial =
+    !!socials.website || !!socials.twitter || !!socials.telegram || !!socials.github || !!socials.warpcast || !!socials.coingecko;
+
+  const tokenLabel = (r?.name ?? r?.symbol ?? r?.address ?? "").toString();
+  const tokenUpper = tokenLabel ? tokenLabel.toUpperCase() : r?.address;
+
+  // quick-search fallbacks if we lack verified links
+  const quickSearch = useMemo(() => {
+    const q = encodeURIComponent(`${tokenLabel || r?.address} Base token`);
+    return {
+      twitter: `https://twitter.com/search?q=${q}&f=live`,
+      warpcast: `https://warpcast.com/~/search?query=${q}`,
+      google: `https://www.google.com/search?q=${q}`,
+      coingecko: `https://www.coingecko.com/en/search?query=${q}`,
+      telegram: `https://t.me/s/${encodeURIComponent(tokenLabel || "")}`,
+    };
+  }, [tokenLabel, r?.address]);
 
   return (
     <AgencyChrome>
@@ -188,7 +271,7 @@ export default function Page() {
               <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03]">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                   <div className="text-xl font-bold break-words font-mono">
-                    {(r.name ?? r.symbol ?? r.address ?? "").toUpperCase() || r.address}
+                    {tokenUpper || r.address}
                   </div>
                   <div className="text-white/60 text-xs break-all font-mono">{r.address}</div>
                   <div className="self-center md:self-auto">
@@ -256,9 +339,35 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Socials */}
+              <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
+                <h3 className="font-semibold mb-2">Socials</h3>
+                {hasSomeSocial ? (
+                  <div className="flex flex-wrap gap-2">
+                    <SocialLink href={socials.website}  label="Website" />
+                    <SocialLink href={socials.twitter}  label="Twitter/X" />
+                    <SocialLink href={socials.telegram} label="Telegram" />
+                    <SocialLink href={socials.github}   label="GitHub" />
+                    <SocialLink href={socials.warpcast} label="Warpcast" />
+                    <SocialLink href={socials.coingecko} label="CoinGecko" />
+                  </div>
+                ) : (
+                  <div className="text-sm text-white/70">
+                    No verified links found. Try quick search:
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <SocialLink href={quickSearch.twitter}  label="Search Twitter" />
+                      <SocialLink href={quickSearch.warpcast} label="Search Warpcast" />
+                      <SocialLink href={quickSearch.coingecko} label="Search CoinGecko" />
+                      <SocialLink href={quickSearch.telegram} label="Search Telegram" />
+                      <SocialLink href={quickSearch.google}   label="Google" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Links + Share */}
               <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03] flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
+                <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot{hasSomeSocial ? ", Socials" : ""}</span>
                 <div className="self-start md:self-auto">
                   <ShareRow
                     token={r.symbol ?? r.name ?? r.address}
@@ -268,6 +377,7 @@ export default function Page() {
                     buySellRatio={r.metrics.buySellRatio}
                     url={r.permalink}
                     image={r.imageUrl}
+                    summary={undefined}
                   />
                 </div>
               </div>
