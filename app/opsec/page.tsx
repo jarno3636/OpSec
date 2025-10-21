@@ -7,7 +7,7 @@ import ScoreBadge from "@/components/ScoreBadge";
 import { KeyValue } from "@/components/KeyValue";
 import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
-import ShareRow from "@/components/ShareRow";
+import ShareRow from "@/components/ShareRow";           // ✅ uses new share setup underneath
 import DebugPanel from "@/components/DebugPanel";
 import GradePreview from "@/components/GradePreview";
 
@@ -224,7 +224,7 @@ export default function Page() {
               {/* Live preview card (grade + pills + explainer) */}
               <GradePreview r={r} />
 
-              {/* Summary + Key stats (kept for power users) */}
+              {/* Summary + Key stats */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
                   <h3 className="font-semibold mb-2">Summary</h3>
@@ -262,23 +262,23 @@ export default function Page() {
                 </div>
               </div>
 
-              {/* Deep-dive cards users typically want */}
+              {/* Deep-dive cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Ownership / Proxy / LP */}
+                {/* Contract controls */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03] space-y-2">
                   <h3 className="font-semibold mb-2">Contract Controls</h3>
-                  <KeyValue k="Ownership" v={ownerNote ? prettifyHexIn(ownerNote) : "—"} />
-                  <KeyValue k="Proxy" v={proxyNote ? prettifyHexIn(proxyNote) : "—"} />
-                  <KeyValue k="LP Lock" v={lpNote ?? "—"} />
+                  <KeyValue k="Ownership" v={f("owner")?.note ? prettifyHexIn(f("owner")!.note!) : "—"} />
+                  <KeyValue k="Proxy" v={f("proxy")?.note ? prettifyHexIn(f("proxy")!.note!) : "—"} />
+                  <KeyValue k="LP Lock" v={f("lp_lock")?.note ?? "—"} />
                 </div>
 
-                {/* Transfer controls / Taxes / Security */}
+                {/* Security & Trading */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03] space-y-2">
                   <h3 className="font-semibold mb-2">Security & Trading</h3>
-                  <KeyValue k="Blacklist / Limits" v={blacklist ?? "—"} />
-                  <KeyValue k="Tax Swing" v={taxSwing ?? "—"} />
-                  <KeyValue k="GoPlus" v={gpNote ?? "—"} />
-                  <KeyValue k="Honeypot.is" v={hpNote ?? "—"} />
+                  <KeyValue k="Blacklist / Limits" v={f("blacklist")?.note ?? "—"} />
+                  <KeyValue k="Tax Swing" v={f("tax_swing")?.note ?? "—"} />
+                  <KeyValue k="GoPlus" v={f("goplus")?.note ?? "—"} />
+                  <KeyValue k="Honeypot.is" v={f("honeypot")?.note ?? "—"} />
                 </div>
               </div>
 
