@@ -3,27 +3,28 @@ import { NextResponse } from "next/server";
 export const runtime = "edge";
 
 export async function GET() {
-  const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://opsec-mini.vercel.app";
+  const base =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+    "https://opsec-mini.vercel.app";
 
   const manifest = {
     name: "OpSec",
     description: "Professional token due-diligence for Base.",
     website: base,
-    // Used by Farcaster clients to show an app icon
     icon: `${base}/icon-512.png`,
-    // Nice preview when a client wants a large image (OG-like)
     splash: {
       url: `${base}/icon-1200x630.png`,
       aspectRatio: "1.91:1",
     },
-    // Frames meta
     frames: {
       version: "vNext",
       imageAspectRatio: "1.91:1",
-      // If you later add a POST endpoint for interactive frames, set it here:
       // postUrl: `${base}/api/frame`,
     },
-    // Optional: simple action so users can jump into the analyzer
+    /** ✅ Added baseBuilder block */
+    baseBuilder: {
+      ownerAddress: "0x7fd97A417F64d2706cF5C93c8fdf493EdA42D25c",
+    },
     actions: [
       {
         name: "Analyze with OpSec",
@@ -35,7 +36,6 @@ export async function GET() {
         },
       },
     ],
-    // Optional: contact / developer info
     developer: {
       name: "OpSec",
       url: base,
