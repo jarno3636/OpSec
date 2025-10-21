@@ -3,11 +3,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import AgencyChrome from "@/components/AgencyChrome";
-import ScoreBadge from "@/components/ScoreBadge";
+// import ScoreBadge from "@/components/ScoreBadge"; // ⬅ removed from header
 import { KeyValue } from "@/components/KeyValue";
 import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
-import ShareRow from "@/components/ShareRow";           // ✅ uses new share setup underneath
+import ShareRow from "@/components/ShareRow";
 import DebugPanel from "@/components/DebugPanel";
 import GradePreview from "@/components/GradePreview";
 
@@ -95,6 +95,8 @@ export default function Page() {
   const taxSwing  = f("tax_swing")?.note;
   const gpNote    = f("goplus")?.note;
   const hpNote    = f("honeypot")?.note;
+
+  const titleText = (r?.name ?? r?.symbol ?? r?.address ?? "").toString().toUpperCase();
 
   return (
     <AgencyChrome>
@@ -208,20 +210,15 @@ export default function Page() {
 
           {r && !loading && (
             <section className="mt-4 space-y-4">
-              {/* Compact header */}
+              {/* Compact header — NO GRADE HERE */}
               <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03]">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                  <div className="text-xl font-bold break-words font-mono">
-                    {r.name ?? r.symbol ?? r.address}
-                  </div>
+                  <div className="text-xl font-bold break-words font-mono">{titleText}</div>
                   <div className="text-white/60 text-xs break-all font-mono">{r.address}</div>
-                  <div className="self-center md:self-auto">
-                    <ScoreBadge grade={r.grade} />
-                  </div>
                 </div>
               </div>
 
-              {/* Live preview card (grade + pills + explainer) */}
+              {/* Live preview (grade + pills + explainer) */}
               <GradePreview r={r} />
 
               {/* Summary + Key stats */}
@@ -245,7 +242,7 @@ export default function Page() {
                       k="Liquidity (USD)"
                       v={
                         typeof r.metrics.liquidityUSD === "number"
-                          ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
+                          ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(r.metrics.liquidityUSD)
                           : reason("markets", "—")
                       }
                     />
@@ -253,32 +250,37 @@ export default function Page() {
                       k="Top Holder %"
                       v={
                         typeof r.metrics.topHolderPct === "number"
-                          ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
+                          ? `${r.metrics.topHolderPct.toFixed(1)}%`
                           : reason("erc20", "—")
                       }
                     />
-                    <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? reason("markets", "—")} />
+                    <KeyValue
+                      k="Buy/Sell (24h)"
+                      v={
+                        typeof r.metrics.buySellRatio === "string" || typeof r.metrics.buySellRatio === "number"
+                          ? `${r.metrics.buySellRatio}x`.replace("∞x","∞")
+                          : reason("markets", "—")
+                      }
+                    />
                   </div>
                 </div>
               </div>
 
               {/* Deep-dive cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Contract controls */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03] space-y-2">
                   <h3 className="font-semibold mb-2">Contract Controls</h3>
-                  <KeyValue k="Ownership" v={f("owner")?.note ? prettifyHexIn(f("owner")!.note!) : "—"} />
-                  <KeyValue k="Proxy" v={f("proxy")?.note ? prettifyHexIn(f("proxy")!.note!) : "—"} />
-                  <KeyValue k="LP Lock" v={f("lp_lock")?.note ?? "—"} />
+                  <KeyValue k="Ownership" v={ownerNote ? prettifyHexIn(ownerNote) : "—"} />
+                  <KeyValue k="Proxy" v={proxyNote ? prettifyHexIn(proxyNote) : "—"} />
+                  <KeyValue k="LP Lock" v={lpNote ?? "—"} />
                 </div>
 
-                {/* Security & Trading */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03] space-y-2">
                   <h3 className="font-semibold mb-2">Security & Trading</h3>
-                  <KeyValue k="Blacklist / Limits" v={f("blacklist")?.note ?? "—"} />
-                  <KeyValue k="Tax Swing" v={f("tax_swing")?.note ?? "—"} />
-                  <KeyValue k="GoPlus" v={f("goplus")?.note ?? "—"} />
-                  <KeyValue k="Honeypot.is" v={f("honeypot")?.note ?? "—"} />
+                  <KeyValue k="Blacklist / Limits" v={blacklist ?? "—"} />
+                  <KeyValue k="Tax Swing" v={taxSwing ?? "—"} />
+                  <KeyValue k="GoPlus" v={gpNote ?? "—"} />
+                  <KeyValue k="Honeypot.is" v={hpNote ?? "—"} />
                 </div>
               </div>
 
@@ -286,36 +288,12 @@ export default function Page() {
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
                 <h3 className="font-semibold mb-2">Links</h3>
                 <ul className="text-sm text-sky-300 space-y-1">
-                  <li>
-                    <a className="hover:underline" target="_blank" rel="noreferrer" href={`${EXPLORER}/token/${r.address}`}>
-                      BaseScan token
-                    </a>
-                  </li>
-                  <li>
-                    <a className="hover:underline" target="_blank" rel="noreferrer" href={`${EXPLORER}/address/${r.address}`}>
-                      BaseScan contract
-                    </a>
-                  </li>
-                  <li>
-                    <a className="hover:underline" target="_blank" rel="noreferrer" href={`https://dexscreener.com/base/${r.address}`}>
-                      DEX Screener (Base)
-                    </a>
-                  </li>
-                  <li>
-                    <a className="hover:underline" target="_blank" rel="noreferrer" href={`https://www.geckoterminal.com/base/pools?query=${r.address}`}>
-                      GeckoTerminal search
-                    </a>
-                  </li>
-                  <li>
-                    <a className="hover:underline" target="_blank" rel="noreferrer" href={`https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${r.address}`}>
-                      GoPlus: token_security
-                    </a>
-                  </li>
-                  <li>
-                    <a className="hover:underline" target="_blank" rel="noreferrer" href={`https://honeypot.is/?address=${r.address}&chain=base`}>
-                      Honeypot.is (UI)
-                    </a>
-                  </li>
+                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`${EXPLORER}/token/${r.address}`}>BaseScan token</a></li>
+                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`${EXPLORER}/address/${r.address}`}>BaseScan contract</a></li>
+                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://dexscreener.com/base/${r.address}`}>DEX Screener (Base)</a></li>
+                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://www.geckoterminal.com/base/pools?query=${r.address}`}>GeckoTerminal search</a></li>
+                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${r.address}`}>GoPlus: token_security</a></li>
+                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://honeypot.is/?address=${r.address}&chain=base`}>Honeypot.is (UI)</a></li>
                 </ul>
               </div>
 
@@ -335,7 +313,6 @@ export default function Page() {
                 </div>
               </div>
 
-              {/* Diagnostics panel */}
               {Array.isArray((r as any).upstreamDiagnostics) && showDiag && (
                 <DebugPanel diagnostics={(r as any).upstreamDiagnostics} />
               )}
