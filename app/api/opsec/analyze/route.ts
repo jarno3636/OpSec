@@ -5,7 +5,7 @@ import { fetchBaseScan, fetchGoPlus, fetchHoneypot, fetchMarkets } from "@/lib/o
 import { computeReport } from "@/lib/opsec/score";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs"; // ← critical: avoid Edge’s ~2s outbound timeout
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const qRaw = (req.nextUrl.searchParams.get("query") || "").trim();
@@ -42,24 +42,10 @@ export async function GET(req: NextRequest) {
       ...(hp?._diagnostics ?? []),
     ];
 
-    const baseInfo = {
-      baseBuilder: {
-        ownerAddress: "0x7fd97A417F64d2706cF5C93c8fdf493EdA42D25c",
-        chainId: 8453,
-        explorer: "https://basescan.org",
-      },
-    };
-
-    const payload = debug
-      ? { ...report, ...baseInfo, upstreamDiagnostics, debug: true }
-      : { ...report, ...baseInfo };
-
+    const payload = debug ? { ...report, upstreamDiagnostics, debug: true } : report;
     return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
-    return NextResponse.json(
-      { error: "internal_error", message: e?.message ?? "Unexpected failure" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "internal_error", message: e?.message ?? "Unexpected failure" }, { status: 500 });
   }
 }
