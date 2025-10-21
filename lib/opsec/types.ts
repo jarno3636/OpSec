@@ -9,10 +9,27 @@ export type Finding = {
 export type Metrics = {
   liquidityUSD?: number;
   topHolderPct?: number;
-  buySellRatio?: string;     // ratio rendered as string (e.g. "1.25", "∞")
-  volume24hUSD?: number;     // ✅ add
-  fdvUSD?: number;           // ✅ add
-  lpLockedPct?: number;      // ✅ add
+  buySellRatio?: string;    // "∞" or "0.85" etc
+  volume24hUSD?: number;
+  fdvUSD?: number;
+  lpLockedPct?: number;
+};
+
+export type Sources = {
+  basescan: string;
+  goplus: string;
+  dexscreener: string;
+  honeypot: string;
+  coingecko?: string;       // NEW (optional)
+};
+
+export type Socials = {
+  website?: string;
+  twitter?: string;
+  telegram?: string;
+  github?: string;
+  warpcast?: string;
+  coingecko?: string;
 };
 
 export type OpSecReport = {
@@ -20,17 +37,13 @@ export type OpSecReport = {
   chainId: number;
   name?: string;
   symbol?: string;
-  score: number;             // 0–100
+  score: number;
   grade: "A" | "B" | "C" | "D" | "F";
   summary: Finding[];
   findings: Finding[];
   metrics: Metrics;
   imageUrl: string;
   permalink: string;
-  sources: {
-    basescan: string;
-    goplus: string;
-    dexscreener: string;
-    honeypot: string;
-  };
+  sources: Sources;
+  socials?: Socials;        // NEW (optional)
 };
