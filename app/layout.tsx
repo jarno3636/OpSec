@@ -16,7 +16,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#00ff95",
+  themeColor: "#00ff95", // ✅ belongs here, not in metadata
 };
 
 export const metadata: Metadata = {
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     description,
     images: ["/api/opsec/og?grade=A&name=OpSec"],
   },
-  // Frames vNext default (individual pages can override with more specific buttons/targets)
+  // Frames vNext default (pages can override as needed)
   other: {
     "fc:frame": "vNext",
     "fc:frame:image": `${site}/api/opsec/og?grade=A&name=OpSec`,
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/apple-touch-icon.png" }],
   },
-  themeColor: "#00ff95",
+  // ❌ removed: themeColor
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -65,12 +65,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* ✅ Farcaster Mini-App SDK */}
         <script async src="https://cdn.farcaster.xyz/sdk/miniapp/v2.js"></script>
 
-        {/* ✅ Farcaster Mini-App meta (image & URL should be absolute) */}
+        {/* ✅ Farcaster Mini-App meta (absolute URLs) */}
         <meta name="x-miniapp-name" content="OpSec" />
         <meta name="x-miniapp-image" content={`${site}/api/opsec/og?grade=A&name=OpSec`} />
         <meta name="x-miniapp-url" content={site} />
 
-        {/* Ultra-early MiniApp ready ping + brief retries (covers late injection) */}
+        {/* Ultra-early MiniApp ready ping + retries */}
         <script
           id="fc-miniapp-ready"
           dangerouslySetInnerHTML={{
@@ -100,15 +100,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   window.addEventListener('focus', onFocus);
   window.addEventListener('pageshow', onShow);
 })();
-          `,
+            `,
           }}
         />
       </head>
       <body>
-        {/* Light boot helpers to smooth SDK-ready timing in Warpcast */}
         <MiniAppBoot />
         <AppReady />
-
         <NavBar />
         {children}
         <Footer />
