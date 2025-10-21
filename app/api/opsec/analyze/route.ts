@@ -4,7 +4,23 @@ import { isAddress, type Address } from "viem";
 import { fetchBaseScan, fetchGoPlus, fetchHoneypot, fetchMarkets } from "@/lib/opsec/sources";
 import { computeReport } from "@/lib/opsec/score";
 
+/* ---------- Runtime Config ---------- */
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs"; // Run on Node.js to prevent edge timeouts
+
+/* ---------- Optional: Safe concurrent fetch wrapper ---------- */
+async function safeFetch<T>(fn: () => Promise<T>, label: string): Promise<T | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000); // 10s max per API
+    const result = await fn();
+    clearTimeout(timeout);
+    return result;
+  } catch (err: any) {
+    console.warn(`[opsec:fetch] ${label} failed or aborted`, err?.message);
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   const qRaw = (req.nextUrl.searchParams.get("query") || "").trim();
@@ -20,13 +36,19 @@ export async function GET(req: NextRequest) {
   const address = qRaw as Address;
 
   try {
-    const [bs, markets, gp, hp] = await Promise.all([
-      fetchBaseScan(address),
-      fetchMarkets(address),
-      fetchGoPlus(address),
-      fetchHoneypot(address),
+    // Fetch all upstream sources concurrently with safer isolation
+    const results = await Promise.allSettled([
+      safeFetch(() => fetchBaseScan(address), "BaseScan"),
+      safeFetch(() => fetchMarkets(address), "Markets"),
+      safeFetch(() => fetchGoPlus(address), "GoPlus"),
+      safeFetch(() => fetchHoneypot(address), "Honeypot"),
     ]);
 
+    const [bs, markets, gp, hp] = results.map((r) =>
+      r.status === "fulfilled" ? r.value : null
+    );
+
+    // Compute report (skip nulls gracefully)
     const report = await computeReport(address, { bs, markets, gp, hp } as any);
 
     const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
@@ -35,7 +57,7 @@ export async function GET(req: NextRequest) {
     )}`;
     report.permalink = `${site}/opsec/${address}`;
 
-    // Collect upstream call diagnostics if debug is on
+    /* ---------- Collect upstream call diagnostics ---------- */
     const upstreamDiagnostics = [
       ...(bs?._diagnostics ?? []),
       ...(markets?._diagnostics ?? []),
@@ -43,7 +65,7 @@ export async function GET(req: NextRequest) {
       ...(hp?._diagnostics ?? []),
     ];
 
-    // Merge optional Base metadata in a non-breaking way
+    /* ---------- Add Base builder metadata ---------- */
     const baseInfo = {
       baseBuilder: {
         ownerAddress: "0x7fd97A417F64d2706cF5C93c8fdf493EdA42D25c",
@@ -52,11 +74,14 @@ export async function GET(req: NextRequest) {
       },
     };
 
+    /* ---------- Response Payload ---------- */
     const payload = debug
       ? { ...report, ...baseInfo, upstreamDiagnostics, debug: true }
       : { ...report, ...baseInfo };
 
-    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
     return NextResponse.json(
