@@ -1,4 +1,3 @@
-// lib/opsec/onchain.ts
 import { baseClient } from "@/lib/rpc";
 import type { Address } from "viem";
 import { ERC20_METADATA, OWNABLE, PAUSABLE, BLACKLISTY, TAXY, ERC1967_SLOTS } from "./abi";
@@ -7,6 +6,19 @@ async function safeRead<T>(fn: () => Promise<T>): Promise<T | undefined> {
   try { return await fn(); } catch { return undefined; }
 }
 
+/** Lightweight ERC-20 probe (+ metadata) */
+export async function readErc20Meta(address: Address) {
+  const [name, symbol, decimals, totalSupply] = await Promise.all([
+    safeRead(() => (baseClient as any).readContract({ address, abi: ERC20_METADATA as any, functionName: "name" })),
+    safeRead(() => (baseClient as any).readContract({ address, abi: ERC20_METADATA as any, functionName: "symbol" })),
+    safeRead(() => (baseClient as any).readContract({ address, abi: ERC20_METADATA as any, functionName: "decimals" })),
+    safeRead(() => (baseClient as any).readContract({ address, abi: ERC20_METADATA as any, functionName: "totalSupply" })),
+  ]);
+  const isErc20 = Number.isFinite(Number(decimals));
+  return { isErc20, name, symbol, decimals, totalSupply };
+}
+
+/** (kept for callers that want the raw fields without isErc20) */
 export async function readMetadata(address: Address) {
   const [name, symbol, decimals, totalSupply] = await Promise.all([
     safeRead(() => (baseClient as any).readContract({ address, abi: ERC20_METADATA as any, functionName: "name" })),
@@ -21,7 +33,7 @@ export async function readOwner(address: Address) {
   const owner  = await safeRead(() => (baseClient as any).readContract({ address, abi: OWNABLE as any, functionName: "owner" }));
   if (owner && owner !== "0x0000000000000000000000000000000000000000") return owner as string;
   const alt    = await safeRead(() => (baseClient as any).readContract({ address, abi: OWNABLE as any, functionName: "getOwner" }));
-  return (alt as string | undefined) ?? owner ?? "0x0000000000000000000000000000000000000000";
+  return (alt as string | undefined) ?? (owner as string | undefined) ?? "0x0000000000000000000000000000000000000000";
 }
 
 export async function readPaused(address: Address) {
@@ -51,17 +63,13 @@ export async function readTaxHints(address: Address) {
   return { taxFee, buyTax, sellTax, totalBuyTax, totalSellTax };
 }
 
-// Robust proxy detection: read EIP-1967 slots directly
+/** Robust proxy detection: read EIP-1967 slots directly */
 export async function readEip1967Implementation(address: Address) {
   try {
-    const raw = await (baseClient as any).getStorageAt({
-      address,
-      slot: ERC1967_SLOTS.IMPLEMENTATION,
-    });
-    // last 20 bytes = impl address (if not zero)
+    const raw = await (baseClient as any).getStorageAt({ address, slot: ERC1967_SLOTS.IMPLEMENTATION });
     const hex = (raw as string || "0x").toLowerCase();
     if (hex === "0x" || /^0x0+$/.test(hex)) return undefined;
-    const impl = ("0x" + hex.slice(-40)) as Address;
+    const impl = ("0x" + hex.slice(-40)) as Address; // last 20 bytes
     if (impl.toLowerCase() === "0x0000000000000000000000000000000000000000") return undefined;
     return impl;
   } catch {
