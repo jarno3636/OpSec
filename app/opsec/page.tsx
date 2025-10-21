@@ -8,6 +8,7 @@ import { KeyValue } from "@/components/KeyValue";
 import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
 import ShareRow from "@/components/ShareRow";
+import DebugPanel from "@/components/DebugPanel"; // ⬅️ NEW
 
 /** Middle-ellipsis any 0x…40 hex address inside a string */
 function prettifyHexIn(note: string) {
@@ -43,7 +44,7 @@ export default function Page() {
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || `Request failed (${res.status})`);
       setR(payload);
-      // Auto-open table if diagnostics present and debugMode is on
+      // Auto-open panel if diagnostics present and debugMode is on
       if (debugMode && Array.isArray(payload?.upstreamDiagnostics) && payload.upstreamDiagnostics.length) {
         setShowDiag(true);
       }
@@ -152,162 +153,137 @@ export default function Page() {
             </button>
           </div>
 
-          {/* STATUS / ERROR + mobile debug toggle */}
-          <div className="mt-3 flex items-center justify-between">
-            <div className="min-h-[1.75rem]" aria-live="polite">
-              {loading && scanningText}
-              {!loading && err && (
-                <span className="inline-flex items-center text-xs text-red-300 px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10">
-                  {err}
-                </span>
-              )}
-            </div>
-            <div className="sm:hidden">
-              <label className="inline-flex items-center gap-2 text-xs select-none cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-400"
-                  checked={debugMode}
-                  onChange={(e) => setDebugMode(e.target.checked)}
-                />
-                <span className="text-white/75">Debug</span>
-              </label>
-            </div>
+        {/* STATUS / ERROR + mobile debug toggle */}
+        <div className="mt-3 flex items-center justify-between">
+          <div className="min-h-[1.75rem]" aria-live="polite">
+            {loading && scanningText}
+            {!loading && err && (
+              <span className="inline-flex items-center text-xs text-red-300 px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10">
+                {err}
+              </span>
+            )}
+          </div>
+          <div className="sm:hidden">
+            <label className="inline-flex items-center gap-2 text-xs select-none cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-emerald-400"
+                checked={debugMode}
+                onChange={(e) => setDebugMode(e.target.checked)}
+              />
+              <span className="text-white/75">Debug</span>
+            </label>
           </div>
         </div>
+      </div>
 
-        {/* RESULT */}
-        <div className="mx-auto w-full max-w-3xl">
-          {loading && (
-            <div className="mt-4 rounded-2xl border border-white/10 p-4 bg-white/[0.04] overflow-hidden">
-              <div className="animate-pulse space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="h-5 w-48 bg-white/10 rounded" />
-                  <div className="h-12 w-12 bg-white/10 rounded-xl" />
+      {/* RESULT */}
+      <div className="mx-auto w-full max-w-3xl">
+        {loading && (
+          <div className="mt-4 rounded-2xl border border-white/10 p-4 bg-white/[0.04] overflow-hidden">
+            <div className="animate-pulse space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="h-5 w-48 bg-white/10 rounded" />
+                <div className="h-12 w-12 bg-white/10 rounded-xl" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="h-24 bg-white/10 rounded-xl" />
+                <div className="h-24 bg-white/10 rounded-xl" />
+              </div>
+              <div className="h-8 w-56 bg-white/10 rounded" />
+            </div>
+          </div>
+        )}
+
+        {r && !loading && (
+          <section className="mt-4 rounded-2xl border border-white/10 p-5 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.05),transparent_60%)] overflow-hidden shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="text-center md:text-left">
+                <div className="text-xl font-bold break-words font-mono">
+                  {r.name ?? r.symbol ?? r.address}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="h-24 bg-white/10 rounded-xl" />
-                  <div className="h-24 bg-white/10 rounded-xl" />
-                </div>
-                <div className="h-8 w-56 bg-white/10 rounded" />
+                <div className="text-white/60 text-sm break-all font-mono">{r.address}</div>
+              </div>
+              <div className="self-center">
+                <ScoreBadge grade={r.grade} />
               </div>
             </div>
-          )}
 
-          {r && !loading && (
-            <section className="mt-4 rounded-2xl border border-white/10 p-5 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.05),transparent_60%)] overflow-hidden shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
-              {/* Header */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="text-center md:text-left">
-                  <div className="text-xl font-bold break-words font-mono">
-                    {r.name ?? r.symbol ?? r.address}
-                  </div>
-                  <div className="text-white/60 text-sm break-all font-mono">{r.address}</div>
-                </div>
-                <div className="self-center">
-                  <ScoreBadge grade={r.grade} />
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Summary */}
-                <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
-                  <h3 className="font-semibold mb-2">Summary</h3>
-                  <div className="space-y-1 text-sm break-words hyphens-auto">
-                    {r.summary.map((s, i) => (
-                      <div key={i} className={s.ok ? "text-green-400" : "text-red-400"}>
-                        {s.ok ? "✓" : "✗"} <span className="font-normal">{prettifyHexIn(s.note)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Key Stats */}
-                <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
-                  <h3 className="font-semibold mb-2">Key Stats</h3>
-                  <div className="space-y-2">
-                    <KeyValue k="Score" v={`${r.score}/100`} />
-                    <KeyValue
-                      k="Liquidity (USD)"
-                      v={
-                        typeof r.metrics.liquidityUSD === "number"
-                          ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
-                          : reason("markets", "—")
-                      }
-                    />
-                    <KeyValue
-                      k="Top Holder %"
-                      v={
-                        typeof r.metrics.topHolderPct === "number"
-                          ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
-                          : reason("erc20", "—")
-                      }
-                    />
-                    <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? reason("markets", "—")} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Share + Sources */}
-              <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
-                <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
-                <div className="self-start md:self-auto">
-                  <ShareRow
-                    token={r.symbol ?? r.name ?? r.address}
-                    grade={r.grade}
-                    liquidityUSD={typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined}
-                    topHolderPct={typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined}
-                    buySellRatio={r.metrics.buySellRatio}
-                    url={r.permalink}
-                    image={r.imageUrl}
-                  />
-                </div>
-              </div>
-
-              {/* Diagnostics panel (only if API returned diagnostics) */}
-              {Array.isArray((r as any).upstreamDiagnostics) && (
-                <div className="mt-4">
-                  <button
-                    onClick={() => setShowDiag((v) => !v)}
-                    className="text-xs px-3 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
-                    aria-expanded={showDiag}
-                    aria-controls="opsec-debug-table"
-                  >
-                    {showDiag ? "Hide" : "Show"} debug
-                  </button>
-                  {showDiag && (
-                    <div className="mt-2 overflow-x-auto rounded-lg border border-white/10">
-                      <table id="opsec-debug-table" className="w-full text-[11px]">
-                        <thead className="bg-white/5">
-                          <tr>
-                            <th className="p-2 text-left">Upstream</th>
-                            <th className="p-2 text-left">Status</th>
-                            <th className="p-2 text-left">Time (ms)</th>
-                            <th className="p-2 text-left">Note</th>
-                            <th className="p-2 text-left">URL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(r as any).upstreamDiagnostics.map((d: any, i: number) => (
-                            <tr key={i} className="odd:bg-white/[0.03]">
-                              <td className="p-2 whitespace-nowrap">{d.name}</td>
-                              <td className="p-2 whitespace-nowrap">{d.status ?? (d.ok ? "OK" : "—")}</td>
-                              <td className="p-2 whitespace-nowrap">{d.ms}</td>
-                              <td className="p-2">{d.note || ""}</td>
-                              <td className="p-2 max-w-[360px] truncate">{d.url}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+            {/* Body */}
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Summary */}
+              <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
+                <h3 className="font-semibold mb-2">Summary</h3>
+                <div className="space-y-1 text-sm break-words hyphens-auto">
+                  {r.summary.map((s, i) => (
+                    <div key={i} className={s.ok ? "text-green-400" : "text-red-400"}>
+                      {s.ok ? "✓" : "✗"} <span className="font-normal">{prettifyHexIn(s.note)}</span>
                     </div>
-                  )}
+                  ))}
                 </div>
-              )}
-            </section>
-          )}
-        </div>
+              </div>
+
+              {/* Key Stats */}
+              <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
+                <h3 className="font-semibold mb-2">Key Stats</h3>
+                <div className="space-y-2">
+                  <KeyValue k="Score" v={`${r.score}/100`} />
+                  <KeyValue
+                    k="Liquidity (USD)"
+                    v={
+                      typeof r.metrics.liquidityUSD === "number"
+                        ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
+                        : reason("markets", "—")
+                    }
+                  />
+                  <KeyValue
+                    k="Top Holder %"
+                    v={
+                      typeof r.metrics.topHolderPct === "number"
+                        ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
+                        : reason("erc20", "—")
+                    }
+                  />
+                  <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? reason("markets", "—")} />
+                </div>
+              </div>
+            </div>
+
+            {/* Share + Sources */}
+            <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+              <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
+              <div className="self-start md:self-auto">
+                <ShareRow
+                  token={r.symbol ?? r.name ?? r.address}
+                  grade={r.grade}
+                  liquidityUSD={typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined}
+                  topHolderPct={typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined}
+                  buySellRatio={r.metrics.buySellRatio}
+                  url={r.permalink}
+                  image={r.imageUrl}
+                />
+              </div>
+            </div>
+
+            {/* Diagnostics panel */}
+            {Array.isArray((r as any).upstreamDiagnostics) && showDiag && (
+              <DebugPanel diagnostics={(r as any).upstreamDiagnostics} />
+            )}
+            {Array.isArray((r as any).upstreamDiagnostics) && !showDiag && debugMode && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setShowDiag(true)}
+                  className="text-xs px-3 py-1 rounded-md border border-white/15 bg-white/5 hover:bg-white/10"
+                >
+                  Show debug
+                </button>
+              </div>
+            )}
+          </section>
+        )}
       </div>
-    </AgencyChrome>
+    </div>
+  </AgencyChrome>
   );
 }
