@@ -5,22 +5,22 @@ import AgencyChrome from "@/components/AgencyChrome";
 import Logo from "@/components/Logo";
 
 export const metadata: Metadata = {
-  title: "OpSec — Token Due-Diligence on Base",
+  title: "OpSec — Reflections Score v2 (Base)",
   description:
-    "Professional-grade automated token checks for Base: source verification, ownership & proxy checks, supply concentration, liquidity, market behavior, and honeypot/flag scans.",
+    "Reflections Score v2: professional token due-diligence for Base. Source & proxy checks, ownership, LP locks, liquidity, market behavior, security screens, and explorer/social signals.",
   openGraph: {
-    title: "OpSec — Token Due-Diligence on Base",
+    title: "OpSec — Reflections Score v2 (Base)",
     description:
-      "Professional-grade automated token checks for Base: source verification, ownership & proxy checks, supply concentration, liquidity, market behavior, and honeypot/flag scans.",
+      "Reflections Score v2: professional token due-diligence for Base. Source & proxy checks, ownership, LP locks, liquidity, market behavior, security screens, and explorer/social signals.",
     url: "/",
     type: "website",
     images: [{ url: "/icon-1200x630.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "OpSec — Token Due-Diligence on Base",
+    title: "OpSec — Reflections Score v2 (Base)",
     description:
-      "Professional-grade automated token checks for Base: source verification, ownership & proxy checks, supply concentration, liquidity, market behavior, and honeypot/flag scans.",
+      "Reflections Score v2: professional token due-diligence for Base. Source & proxy checks, ownership, LP locks, liquidity, market behavior, security screens, and explorer/social signals.",
     images: ["/icon-1200x630.png"],
   },
   // Farcaster frame hint (generic home-frame)
@@ -58,15 +58,14 @@ export default function HomePage() {
               <div>
                 <Logo size={56} />
                 <h1 className="mt-4 text-4xl md:text-5xl font-black leading-tight tracking-tight">
-                  Professional Token Due-Diligence
+                  Reflections Score v2
                   <br />
-                  <span className="text-scan">for Base</span>
+                  <span className="text-scan">Token Due-Diligence for Base</span>
                 </h1>
                 <p className="mt-3 text-white/70 max-w-2xl">
-                  OpSec inspects Base tokens like a covert review team—source
-                  verification, ownership &amp; proxy checks, supply concentration,
-                  liquidity strength, market behavior, and honeypot/flag scans.
-                  Get a clean, shareable report in seconds.
+                  Run an automated, opinionated review of Base tokens: source &amp; proxy checks,
+                  ownership, LP locks, liquidity depth, market behavior, honeypot/GoPlus flags,
+                  plus explorer/social signals. Share a clean, portable report in seconds.
                 </p>
 
                 <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -156,7 +155,7 @@ export default function HomePage() {
               {
                 title: "2) Deep Scan",
                 body:
-                  "We query BaseScan, GoPlus, DEX Screener, Honeypot and on-chain reads to assemble a complete picture.",
+                  "We query BaseScan, GoPlus, DEX Screener, Honeypot and on-chain reads; v2 also considers socials/momentum where available.",
               },
               {
                 title: "3) Share",
@@ -174,13 +173,14 @@ export default function HomePage() {
             ))}
           </section>
 
-          {/* SCORING EXPLAINER (synced to lib/opsec/score.ts weights) */}
+          {/* SCORING EXPLAINER (synced to lib/opsec/score.ts v2) */}
           <section className="mt-8 rounded-2xl border border-white/10 p-6 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.06),transparent_60%)] shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
-            <h2 className="text-2xl font-bold">How the Score Works</h2>
+            <h2 className="text-2xl font-bold">How Reflections Score v2 Works</h2>
             <p className="mt-1 text-white/70 max-w-3xl">
-              OpSec produces a 0–100 score and a letter grade. Each category aggregates
-              weighted pass/fail checks. The most impactful findings appear in the
-              report “Summary,” with detailed items below.
+              v2 produces a 0–100 score and letter grade. Each category aggregates weighted checks,
+              and unknown signals are treated as <em>neutral</em> (half credit) instead of failing,
+              so new or low-info tokens aren’t unfairly penalized. The most impactful findings appear
+              in the report “Summary,” with details below.
             </p>
 
             <div className="mt-5 grid md:grid-cols-5 gap-3 text-sm">
@@ -209,7 +209,7 @@ export default function HomePage() {
                 <div className="font-semibold">Liquidity</div>
                 <div className="text-white/60">≈21%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
-                  <li>• Depth in USD (ok ≥ $50k)</li>
+                  <li>• Depth in USD (ok ≥ $50k; bonus ≥ $1M)</li>
                   <li>• LP locks/burn evidence</li>
                   <li>• Recent LP pulls / mint risk</li>
                 </ul>
@@ -225,19 +225,19 @@ export default function HomePage() {
               </div>
 
               <div className="rounded-xl border border-white/10 p-4 bg-white/[0.04]">
-                <div className="font-semibold">Security Signals</div>
+                <div className="font-semibold">Security &amp; Signals</div>
                 <div className="text-white/60">≈16%</div>
                 <ul className="mt-2 text-white/70 space-y-1">
-                  <li>• Honeypot check</li>
-                  <li>• GoPlus critical flags</li>
+                  <li>• Honeypot &amp; GoPlus flags</li>
                   <li>• Socials present on explorer</li>
+                  <li>• Community momentum (holders / followers)</li>
                 </ul>
               </div>
             </div>
 
             <p className="mt-4 text-xs text-white/50">
-              Thresholds reflect current heuristics in the scoring engine: Liquidity ok ≥ $50k;
-              Buy/Sell balance ~0.5×–2.0×; Top holder warning ≥ 20%; Large tax swing warning |Δ| &gt; 10%.
+              Core thresholds: Liquidity ok ≥ $50k (bonus ≥ $1M). Buy/Sell balance ~0.5×–2.0×.
+              Top holder warning ≥ 20%. Large tax swing warning |Δ| &gt; 10%. LP lock ok ≥ 50%.
             </p>
 
             <div className="mt-6">
