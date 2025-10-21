@@ -4,34 +4,8 @@ import { isAddress, type Address } from "viem";
 import { fetchBaseScan, fetchGoPlus, fetchHoneypot, fetchMarkets } from "@/lib/opsec/sources";
 import { computeReport } from "@/lib/opsec/score";
 
-/* ---------- Runtime Config ---------- */
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs"; // prevent Vercel edge aborts
-
-/* ---------- Safe fetch with retry ---------- */
-async function resilient<T>(
-  fn: () => Promise<T>,
-  label: string,
-  retries = 2,
-  timeoutMs = 30_000
-): Promise<T | null> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const result = await fn();
-      clearTimeout(timer);
-      return result;
-    } catch (err: any) {
-      clearTimeout(timer);
-      console.warn(`[opsec:${label}] attempt ${attempt} failed:`, err?.message);
-      if (attempt === retries) return null;
-      await new Promise((r) => setTimeout(r, 1000 * attempt)); // backoff
-    }
-  }
-  return null;
-}
+export const runtime = "nodejs"; // ← critical: avoid Edge’s ~2s outbound timeout
 
 export async function GET(req: NextRequest) {
   const qRaw = (req.nextUrl.searchParams.get("query") || "").trim();
@@ -43,23 +17,16 @@ export async function GET(req: NextRequest) {
       { status: 400 }
     );
   }
-
   const address = qRaw as Address;
 
   try {
-    /* ---------- Concurrent fetches with resilience ---------- */
-    const results = await Promise.allSettled([
-      resilient(() => fetchBaseScan(address), "BaseScan"),
-      resilient(() => fetchMarkets(address), "Markets"),
-      resilient(() => fetchGoPlus(address), "GoPlus"),
-      resilient(() => fetchHoneypot(address), "Honeypot"),
+    const [bs, markets, gp, hp] = await Promise.all([
+      fetchBaseScan(address),
+      fetchMarkets(address),
+      fetchGoPlus(address),
+      fetchHoneypot(address),
     ]);
 
-    const [bs, markets, gp, hp] = results.map((r) =>
-      r.status === "fulfilled" ? r.value : null
-    );
-
-    /* ---------- Compute Report ---------- */
     const report = await computeReport(address, { bs, markets, gp, hp } as any);
 
     const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
@@ -68,18 +35,13 @@ export async function GET(req: NextRequest) {
     )}`;
     report.permalink = `${site}/opsec/${address}`;
 
-    /* ---------- Diagnostics ---------- */
     const upstreamDiagnostics = [
       ...(bs?._diagnostics ?? []),
       ...(markets?._diagnostics ?? []),
       ...(gp?._diagnostics ?? []),
       ...(hp?._diagnostics ?? []),
-    ].map((d) => ({
-      ...d,
-      note: d.note || "fetch completed or failed gracefully",
-    }));
+    ];
 
-    /* ---------- Base builder metadata ---------- */
     const baseInfo = {
       baseBuilder: {
         ownerAddress: "0x7fd97A417F64d2706cF5C93c8fdf493EdA42D25c",
@@ -88,14 +50,11 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    /* ---------- Final Payload ---------- */
     const payload = debug
       ? { ...report, ...baseInfo, upstreamDiagnostics, debug: true }
       : { ...report, ...baseInfo };
 
-    return NextResponse.json(payload, {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
     return NextResponse.json(
