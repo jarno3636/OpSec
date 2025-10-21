@@ -1,9 +1,9 @@
-// app/opsec/page.tsx
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import AgencyChrome from "@/components/AgencyChrome";
-// import ScoreBadge from "@/components/ScoreBadge"; // ⬅ removed from header
+import ScoreBadge from "@/components/ScoreBadge";
 import { KeyValue } from "@/components/KeyValue";
 import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
@@ -18,13 +18,13 @@ function prettifyHexIn(note: string) {
 const EXPLORER = "https://basescan.org";
 
 export default function Page() {
+  const params = useSearchParams();
+  const debugMode = params.get("debug") === "1";
+
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [r, setR] = useState<(OpSecReport & { upstreamDiagnostics?: any[] }) | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
-  // Debug UX
-  const [debugMode, setDebugMode] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
 
   const disabled = loading || !q.trim();
@@ -96,8 +96,6 @@ export default function Page() {
   const gpNote    = f("goplus")?.note;
   const hpNote    = f("honeypot")?.note;
 
-  const titleText = (r?.name ?? r?.symbol ?? r?.address ?? "").toString().toUpperCase();
-
   return (
     <AgencyChrome>
       <div className="mx-auto w-full max-w-5xl px-4">
@@ -106,19 +104,6 @@ export default function Page() {
           <div className="text-center md:text-left w-full">
             <h1 className="text-4xl font-black tracking-tight">OPSEC</h1>
             <p className="mt-1 text-white/70">Professional token due-diligence on Base</p>
-          </div>
-
-          {/* Debug mode toggle (desktop) */}
-          <div className="hidden sm:flex items-center gap-2 text-xs">
-            <label className="inline-flex items-center gap-2 select-none cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-emerald-400"
-                checked={debugMode}
-                onChange={(e) => setDebugMode(e.target.checked)}
-              />
-              <span className="text-white/75">Debug mode</span>
-            </label>
           </div>
         </header>
 
@@ -166,7 +151,7 @@ export default function Page() {
             </button>
           </div>
 
-          {/* STATUS / ERROR + mobile debug toggle */}
+          {/* STATUS / ERROR */}
           <div className="mt-3 flex items-center justify-between">
             <div className="min-h-[1.75rem]" aria-live="polite">
               {loading && scanningText}
@@ -175,17 +160,6 @@ export default function Page() {
                   {err}
                 </span>
               )}
-            </div>
-            <div className="sm:hidden">
-              <label className="inline-flex items-center gap-2 text-xs select-none cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-emerald-400"
-                  checked={debugMode}
-                  onChange={(e) => setDebugMode(e.target.checked)}
-                />
-                <span className="text-white/75">Debug</span>
-              </label>
             </div>
           </div>
         </div>
@@ -210,15 +184,20 @@ export default function Page() {
 
           {r && !loading && (
             <section className="mt-4 space-y-4">
-              {/* Compact header — NO GRADE HERE */}
+              {/* Compact header */}
               <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03]">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                  <div className="text-xl font-bold break-words font-mono">{titleText}</div>
+                  <div className="text-xl font-bold break-words font-mono">
+                    {(r.name ?? r.symbol ?? r.address ?? "").toUpperCase() || r.address}
+                  </div>
                   <div className="text-white/60 text-xs break-all font-mono">{r.address}</div>
+                  <div className="self-center md:self-auto">
+                    <ScoreBadge grade={r.grade} />
+                  </div>
                 </div>
               </div>
 
-              {/* Live preview (grade + pills + explainer) */}
+              {/* Live preview card */}
               <GradePreview r={r} />
 
               {/* Summary + Key stats */}
@@ -242,7 +221,7 @@ export default function Page() {
                       k="Liquidity (USD)"
                       v={
                         typeof r.metrics.liquidityUSD === "number"
-                          ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(r.metrics.liquidityUSD)
+                          ? `$${(r.metrics.liquidityUSD ?? 0).toLocaleString()}`
                           : reason("markets", "—")
                       }
                     />
@@ -250,18 +229,11 @@ export default function Page() {
                       k="Top Holder %"
                       v={
                         typeof r.metrics.topHolderPct === "number"
-                          ? `${r.metrics.topHolderPct.toFixed(1)}%`
+                          ? `${(r.metrics.topHolderPct ?? 0).toFixed(1)}%`
                           : reason("erc20", "—")
                       }
                     />
-                    <KeyValue
-                      k="Buy/Sell (24h)"
-                      v={
-                        typeof r.metrics.buySellRatio === "string" || typeof r.metrics.buySellRatio === "number"
-                          ? `${r.metrics.buySellRatio}x`.replace("∞x","∞")
-                          : reason("markets", "—")
-                      }
-                    />
+                    <KeyValue k="Buy/Sell (24h)" v={r.metrics.buySellRatio ?? reason("markets", "—")} />
                   </div>
                 </div>
               </div>
@@ -284,20 +256,7 @@ export default function Page() {
                 </div>
               </div>
 
-              {/* Links */}
-              <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
-                <h3 className="font-semibold mb-2">Links</h3>
-                <ul className="text-sm text-sky-300 space-y-1">
-                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`${EXPLORER}/token/${r.address}`}>BaseScan token</a></li>
-                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`${EXPLORER}/address/${r.address}`}>BaseScan contract</a></li>
-                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://dexscreener.com/base/${r.address}`}>DEX Screener (Base)</a></li>
-                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://www.geckoterminal.com/base/pools?query=${r.address}`}>GeckoTerminal search</a></li>
-                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://api.gopluslabs.io/api/v1/token_security/8453?contract_addresses=${r.address}`}>GoPlus: token_security</a></li>
-                  <li><a className="hover:underline" target="_blank" rel="noreferrer" href={`https://honeypot.is/?address=${r.address}&chain=base`}>Honeypot.is (UI)</a></li>
-                </ul>
-              </div>
-
-              {/* Share + Sources */}
+              {/* Links + Share */}
               <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03] flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
                 <div className="self-start md:self-auto">
@@ -313,6 +272,7 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Diagnostics (only if ?debug=1) */}
               {Array.isArray((r as any).upstreamDiagnostics) && showDiag && (
                 <DebugPanel diagnostics={(r as any).upstreamDiagnostics} />
               )}
