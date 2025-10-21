@@ -1,3 +1,4 @@
+// lib/opsec/onchain.ts
 import { baseClient } from "@/lib/rpc";
 import type { Address } from "viem";
 import { ERC20_METADATA, OWNABLE, PAUSABLE, BLACKLISTY, TAXY, ERC1967_SLOTS } from "./abi";
@@ -27,6 +28,14 @@ export async function readMetadata(address: Address) {
     safeRead(() => (baseClient as any).readContract({ address, abi: ERC20_METADATA as any, functionName: "totalSupply" })),
   ]);
   return { name, symbol, decimals, totalSupply };
+}
+
+/** Generic reads for LP lock % (LP token is an ERC-20) */
+export async function readTotalSupply(token: Address) {
+  return await safeRead<bigint>(() => (baseClient as any).readContract({ address: token, abi: ERC20_METADATA as any, functionName: "totalSupply" }));
+}
+export async function readBalanceOf(token: Address, holder: Address) {
+  return await safeRead<bigint>(() => (baseClient as any).readContract({ address: token, abi: ERC20_METADATA as any, functionName: "balanceOf", args: [holder] }));
 }
 
 export async function readOwner(address: Address) {
