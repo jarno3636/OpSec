@@ -23,7 +23,6 @@ export default function FarcasterMiniBridge({
   ...rest
 }: Props) {
   const onClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    // respect modifier/middle-clicks so users can open in new tab etc.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
     await openInMini(href);
