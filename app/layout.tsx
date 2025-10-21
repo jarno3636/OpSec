@@ -1,12 +1,23 @@
+// app/layout.tsx
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { getSiteUrl } from "@/lib/site";
+import MiniAppBoot from "@/components/MiniAppBoot";
+import AppReady from "@/components/AppReady";
 
 const site = getSiteUrl();
 const title = "OpSec — Token Due Diligence on Base";
 const description = "Professional-grade automated token checks for Base.";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#00ff95",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(site),
@@ -45,18 +56,59 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-touch-icon.png" }],
   },
   themeColor: "#00ff95",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    viewportFit: "cover",
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* ✅ Farcaster Mini-App SDK */}
+        <script async src="https://cdn.farcaster.xyz/sdk/miniapp/v2.js"></script>
+
+        {/* ✅ Farcaster Mini-App meta (image & URL should be absolute) */}
+        <meta name="x-miniapp-name" content="OpSec" />
+        <meta name="x-miniapp-image" content={`${site}/api/opsec/og?grade=A&name=OpSec`} />
+        <meta name="x-miniapp-url" content={site} />
+
+        {/* Ultra-early MiniApp ready ping + brief retries (covers late injection) */}
+        <script
+          id="fc-miniapp-ready"
+          dangerouslySetInnerHTML={{
+            __html: `
+(function(){
+  if (window.__fcReadyInjected) return; window.__fcReadyInjected = true;
+  var attempts = 0, maxAttempts = 40, done = false;
+  function ping(){
+    if (done) return;
+    try { window.farcaster?.actions?.ready?.(); } catch(e) {}
+    try { window.farcaster?.miniapp?.sdk?.actions?.ready?.(); } catch(e) {}
+    try { window.Farcaster?.mini?.sdk?.actions?.ready?.(); } catch(e) {}
+    if (++attempts >= maxAttempts) stop();
+  }
+  function stop(){ done = true; try{ clearInterval(iv); }catch(_){} 
+    window.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('focus', onFocus);
+    window.removeEventListener('pageshow', onShow);
+  }
+  function onVis(){ if (!document.hidden) ping(); }
+  function onFocus(){ ping(); }
+  function onShow(){ ping(); }
+  ping();
+  document.addEventListener('DOMContentLoaded', ping, { once: true });
+  var iv = setInterval(ping, 150);
+  window.addEventListener('visibilitychange', onVis);
+  window.addEventListener('focus', onFocus);
+  window.addEventListener('pageshow', onShow);
+})();
+          `,
+          }}
+        />
+      </head>
       <body>
+        {/* Light boot helpers to smooth SDK-ready timing in Warpcast */}
+        <MiniAppBoot />
+        <AppReady />
+
         <NavBar />
         {children}
         <Footer />
