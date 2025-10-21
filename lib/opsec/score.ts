@@ -10,20 +10,21 @@ import {
   readBalanceOf,
 } from "./onchain";
 
-/* ---------- Raw envelope expected from your fetch pipeline ---------- */
+/* ---------- Raw envelope from your fetch pipeline ---------- */
 type Raw = {
-  bs: any;         // BaseScan responses you already gather (source, holders, tokeninfo)
+  bs: any;         // BaseScan (source, holders, tokeninfo)
   dx?: any;        // DEXScreener (preferred)
   markets?: any;   // GeckoTerminal fallback
   gp: any;         // GoPlus token_security
-  hp: any;         // Honeypot.is response
+  hp: any;         // Honeypot.is
 };
 
 /* ---------- Finding helper with neutral support ---------- */
 type FindingV2 = Finding & { neutral?: boolean };
+
 const P = (ok: boolean | null, weight: number, note: string, key: string): FindingV2 => ({
   key,
-  ok: ok === null ? true : !!ok,  // treat neutral as "ok" for UI coloring
+  ok: ok === null ? true : !!ok,  // treat neutral as "ok" for UI color
   neutral: ok === null,
   weight,
   note,
@@ -52,22 +53,33 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const srcRec = raw.bs?.source?.result?.[0] ?? {};
   const verified = !!srcRec?.SourceCode && srcRec.SourceCode.length > 0;
 
-  // Social presence (from BaseScan tokeninfo or explorer fields)
+  // Social presence (BaseScan tokeninfo/explorer fields)
   const ti = raw.bs?.tokeninfo?.result?.[0] ?? {};
   const socialsPresent =
-    !!(ti?.OfficialSite || ti?.Website || ti?.Twitter || ti?.Telegram || ti?.Github ||
-       srcRec?.SocialProfiles || srcRec?.Email);
+    !!(
+      ti?.OfficialSite ||
+      ti?.Website ||
+      ti?.Twitter ||
+      ti?.Telegram ||
+      ti?.Github ||
+      srcRec?.SocialProfiles ||
+      srcRec?.Email
+    );
 
   // Large project heuristic (holderCount or liquidity)
   const holderCount = num(raw.bs?.holders?.result?.length);
-  const largeProject = holderCount >= 5000 || num(bestPair(raw)?.liquidity?.usd) >= 1_000_000;
+  const largeProject = holderCount >= 5_000 || num(bestPair(raw)?.liquidity?.usd) >= 1_000_000;
 
   // v2: partial credit for big unverified projects
   findings.push(
     P(
       verified ? true : largeProject ? true : false,
       8,
-      verified ? "Source verified on BaseScan" : (largeProject ? "Source not verified (large project — partial credit)" : "Source not verified"),
+      verified
+        ? "Source verified on BaseScan"
+        : largeProject
+        ? "Source not verified (large project — partial credit)"
+        : "Source not verified",
       "verified"
     )
   );
@@ -79,7 +91,12 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
   const hasImpl =
     !!impl || (!!srcRec?.Implementation && !String(srcRec?.Implementation).startsWith("0x000000"));
   findings.push(
-    P(!proxyDetected || hasImpl, 5, proxyDetected ? (hasImpl ? "Upgradeable proxy detected" : "Proxy w/out impl") : "No proxy risk detected", "proxy")
+    P(
+      !proxyDetected || hasImpl,
+      5,
+      proxyDetected ? (hasImpl ? "Upgradeable proxy detected" : "Proxy w/out impl") : "No proxy risk detected",
+      "proxy"
+    )
   );
 
   const ownerAddr = String((await readOwner(address)) || ZERO);
@@ -99,7 +116,9 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
       // stronger weight; bonus for ≥ $1M
       const basePass = liqUSD >= 50_000;
       const bonus = liqUSD >= 1_000_000 ? 2 : 0;
-      findings.push(P(basePass, 12 + bonus, `Liquidity ~$${Math.round(liqUSD).toLocaleString()}`, "liquidity_depth"));
+      findings.push(
+        P(basePass, 12 + bonus, `Liquidity ~$${Math.round(liqUSD).toLocaleString()}`, "liquidity_depth")
+      );
     }
 
     // Buy/Sell ratio
@@ -114,7 +133,12 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
       let ok = true;
       if (trades >= MIN_TRADES) ok = ratio >= 0.5 && ratio <= 2.0;
       findings.push(
-        P(ok, 5, trades < MIN_TRADES ? "Order flow ~thin market" : ok ? "Balanced 24h buy/sell" : "Skewed 24h order flow", "buy_sell_ratio")
+        P(
+          ok,
+          5,
+          trades < MIN_TRADES ? "Order flow ~thin market" : ok ? "Balanced 24h buy/sell" : "Skewed 24h order flow",
+          "buy_sell_ratio"
+        )
       );
     }
 
@@ -145,7 +169,14 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
           num(deadBal) + num(zeroBal) + (lockers as (bigint | undefined)[]).reduce((s, b) => s + num(b), 0);
         const lockedPct = pct(lockedRaw, tsN);
         (metrics as any).lpLockedPct = lockedPct;
-        findings.push(P(lockedPct >= 50, 6, lockedPct ? `LP locked/burned ~${lockedPct.toFixed(1)}%` : "LP lock unknown", "lp_lock"));
+        findings.push(
+          P(
+            lockedPct >= 50,
+            6,
+            lockedPct ? `LP locked/burned ~${lockedPct.toFixed(1)}%` : "LP lock unknown",
+            "lp_lock"
+          )
+        );
       } else {
         // unknown supply → neutral
         findings.push(P(null, 3, "LP lock unknown (no LP token totalSupply)", "lp_lock"));
@@ -188,10 +219,18 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
       raw.hp?.ok === true;
     honeypotFlag = !hpOK;
   }
-  if (gpRec?.is_honeypot === "1" || gpRec?.is_honeypot === 1 || gpRec?.is_honeypot === true) honeypotFlag = true;
+  if (gpRec?.is_honeypot === "1" || gpRec?.is_honeypot === 1 || gpRec?.is_honeypot === true)
+    honeypotFlag = true;
 
   const active = num(mainPair?.txns?.h24?.buys) + num(mainPair?.txns?.h24?.sells) >= 50;
-  findings.push(P(!honeypotFlag, active ? 6 : 8, honeypotFlag ? "Honeypot risk detected" : "Honeypot check passed", "honeypot"));
+  findings.push(
+    P(
+      !honeypotFlag,
+      active ? 6 : 8,
+      honeypotFlag ? "Honeypot risk detected" : "Honeypot check passed",
+      "honeypot"
+    )
+  );
 
   if (gpRec) {
     const hasRestrictive = anyTrue([
@@ -200,10 +239,20 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
       gpRec?.is_anti_whale,
       gpRec?.is_whitelisted,
     ]);
-    findings.push(P(!hasRestrictive, 6, hasRestrictive ? "Blacklist/whitelist/anti-whale controls present" : "No restrictive transfer controls", "blacklist"));
+    findings.push(
+      P(
+        !hasRestrictive,
+        6,
+        hasRestrictive
+          ? "Blacklist/whitelist/anti-whale controls present"
+          : "No restrictive transfer controls",
+        "blacklist"
+      )
+    );
 
     const taxSwing = Number(gpRec?.sell_tax ?? 0) - Number(gpRec?.buy_tax ?? 0);
-    if (Number.isFinite(taxSwing)) findings.push(P(Math.abs(taxSwing) <= 10, 3, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
+    if (Number.isFinite(taxSwing))
+      findings.push(P(Math.abs(taxSwing) <= 10, 3, `Tax swing Δ ${taxSwing}%`, "tax_swing"));
 
     const gpSafe = gpOK(gpRec);
     findings.push(P(gpSafe, 5, gpSafe ? "GoPlus: OK" : "GoPlus flags raised", "goplus"));
@@ -213,22 +262,31 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
 
   // Social / transparency presence (new)
   findings.push(
-    P(socialsPresent ? true : null, 6, socialsPresent ? "Socials/website present" : "Missing socials on explorer", "socials")
+    P(
+      socialsPresent ? true : null,
+      6,
+      socialsPresent ? "Socials/website present" : "Missing socials on explorer",
+      "socials"
+    )
   );
 
   // Community momentum (new, simple heuristic)
   const socialFollowers = num(ti?.TwitterFollowers ?? ti?.twitter_followers ?? 0);
-  const momentum = holderCount >= 5000 || socialFollowers >= 5000;
-  findings.push(P(momentum ? true : null, 4, momentum ? "Community momentum detected" : "Momentum data unavailable/low", "momentum"));
+  const momentum = holderCount >= 5_000 || socialFollowers >= 5_000;
+  findings.push(
+    P(
+      momentum ? true : null,
+      4,
+      momentum ? "Community momentum detected" : "Momentum data unavailable/low",
+      "momentum"
+    )
+  );
 
   /* ===== 6) Score & identity ===== */
   const score = scoreFromFindingsV2(findings);
   const grade = scoreToGrade(score);
 
-  const summary = findings
-    .slice()
-    .sort((a, b) => b.weight - a.weight)
-    .slice(0, 6);
+  const summary = findings.slice().sort((a, b) => b.weight - a.weight).slice(0, 6);
 
   // Identity preference
   const name = (ti?.tokenName || srcRec?.ContractName || erc?.name || mainPair?.baseToken?.name || "").toString();
@@ -242,8 +300,10 @@ export async function computeReport(address: Address, raw: Raw): Promise<OpSecRe
     score,
     grade,
     summary,
-    findings,     // includes .neutral flags (harmless to existing UI)
-    metrics,      // includes liquidityUSD, topHolderPct, buySellRatio, volume24hUSD, fdvUSD, lpLockedPct
+    // If your OpSecReport.Finding type doesn't have `neutral`,
+    // keep UI happy & avoid TS friction by casting on return:
+    findings: findings as unknown as Finding[],
+    metrics,
     imageUrl: "",
     permalink: "",
     sources: {
