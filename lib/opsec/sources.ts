@@ -46,7 +46,8 @@ async function getJSON(
     } catch (e: any) {
       clearTimeout(timer);
       if (e?.__http?.status === 404 && breakOn404) throw e;
-      lastErr = e?.name === "AbortError" ? new Error("timeout") : e;
+      const err = e?.name === "AbortError" ? new Error("timeout") : e;
+      lastErr = err;
       if (attempt < maxRetries) await sleep(backoff(attempt));
     }
   }
@@ -57,15 +58,22 @@ async function getJSON(
 export async function fetchBaseScan(
   addr: Address
 ): Promise<UpstreamBundle<{ source: any; holders: any; tokeninfo: any }>> {
-  const key = process.env.BASESCAN_KEY || "";
-  const host = process.env.BASESCAN_HOST || "https://api.basescan.org";
+  // BaseScan uses Etherscan keys; try common env names in order
+  const key =
+    process.env.ETHERSCAN_API_KEY ||
+    process.env.NEXT_PUBLIC_ETHERSCAN_API_KEY ||
+    process.env.BASESCAN_KEY ||                      // fallback if you already had this set
+    process.env.NEXT_PUBLIC_BASESCAN_KEY ||          // fallback
+    "";
+
+  const host = "https://api.basescan.org";
   const q2 = (p: Record<string, string>) =>
     `${host}/v2/api?` + new URLSearchParams({ ...p, chainid: "8453", apikey: key }).toString();
   const q1 = (p: Record<string, string>) =>
     `${host}/api?` + new URLSearchParams({ ...p, apikey: key }).toString();
 
   const diags: Diag[] = [];
-  const shortV2 = 1_000; // quick probe
+  const shortV2 = 1_000;
 
   async function callWithDiag(name: string, url: string, exec: () => Promise<any>, note?: string) {
     const t0 = performance.now();
@@ -85,41 +93,29 @@ export async function fetchBaseScan(
 
   const source = await (async () => {
     const u2 = q2({ module: "contract", action: "getsourcecode", address: addr });
-    const j2 = await callWithDiag("BaseScan:getsourcecode(v2)", u2, () =>
-      getJSON(u2, {}, { timeoutMs: shortV2, retries: 0 })
-    );
+    const j2 = await callWithDiag("BaseScan:getsourcecode(v2)", u2, () => getJSON(u2, {}, { timeoutMs: shortV2, retries: 0 }));
     if (!j2.__failed && Array.isArray(j2?.result) && j2.result.length) return j2;
 
     const u1 = q1({ module: "contract", action: "getsourcecode", address: addr });
-    return await callWithDiag("BaseScan:getsourcecode(v1)", u1, () =>
-      getJSON(u1, {}, { timeoutMs: 5_000, retries: 0 }), "fallback v1"
-    );
+    return await callWithDiag("BaseScan:getsourcecode(v1)", u1, () => getJSON(u1, {}, { timeoutMs: 5_000, retries: 0 }), "fallback v1");
   })();
 
   const holders = await (async () => {
     const u2 = q2({ module: "token", action: "tokenholderlist", contractaddress: addr, page: "1", offset: "100" });
-    const j2 = await callWithDiag("BaseScan:tokenholderlist(v2)", u2, () =>
-      getJSON(u2, {}, { timeoutMs: shortV2, retries: 0 })
-    );
+    const j2 = await callWithDiag("BaseScan:tokenholderlist(v2)", u2, () => getJSON(u2, {}, { timeoutMs: shortV2, retries: 0 }));
     if (!j2.__failed && Array.isArray(j2?.result) && j2.result.length) return j2;
 
     const u1 = q1({ module: "token", action: "tokenholderlist", contractaddress: addr, page: "1", offset: "100" });
-    return await callWithDiag("BaseScan:tokenholderlist(v1)", u1, () =>
-      getJSON(u1, {}, { timeoutMs: 5_000, retries: 0 }), "fallback v1"
-    );
+    return await callWithDiag("BaseScan:tokenholderlist(v1)", u1, () => getJSON(u1, {}, { timeoutMs: 5_000, retries: 0 }), "fallback v1");
   })();
 
   const tokeninfo = await (async () => {
     const u2 = q2({ module: "token", action: "tokeninfo", contractaddress: addr });
-    const j2 = await callWithDiag("BaseScan:tokeninfo(v2)", u2, () =>
-      getJSON(u2, {}, { timeoutMs: shortV2, retries: 0 })
-    );
+    const j2 = await callWithDiag("BaseScan:tokeninfo(v2)", u2, () => getJSON(u2, {}, { timeoutMs: shortV2, retries: 0 }));
     if (!j2.__failed && Array.isArray(j2?.result) && j2.result.length) return j2;
 
     const u1 = q1({ module: "token", action: "tokeninfo", contractaddress: addr });
-    return await callWithDiag("BaseScan:tokeninfo(v1)", u1, () =>
-      getJSON(u1, {}, { timeoutMs: 5_000, retries: 0 }), "fallback v1"
-    );
+    return await callWithDiag("BaseScan:tokeninfo(v1)", u1, () => getJSON(u1, {}, { timeoutMs: 5_000, retries: 0 }), "fallback v1");
   })();
 
   return { source, holders, tokeninfo, _diagnostics: diags };
@@ -130,7 +126,6 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
   const diags: Diag[] = [];
   const add = (d: Diag) => diags.push(d);
 
-  // 1) DexScreener by token
   let dsPairs: any[] = [];
   {
     const url = `https://api.dexscreener.com/latest/dex/tokens/${addr}`;
@@ -145,7 +140,6 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
     }
   }
 
-  // 2) DexScreener search if empty
   if (!dsPairs.length) {
     const url = `https://api.dexscreener.com/latest/dex/search?q=${addr}`;
     const t0 = performance.now();
@@ -159,7 +153,6 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
     }
   }
 
-  // 3) GeckoTerminal fallback; normalize to DS-like shape
   let pairs = dsPairs;
   if (!pairs.length) {
     const url = `https://api.geckoterminal.com/api/v2/networks/base/tokens/${addr}?include=top_pools`;
@@ -176,15 +169,9 @@ export async function fetchMarkets(addr: Address): Promise<UpstreamBundle<{ pair
           chainId: "base",
           dexId: attrs?.dex || attrs?.dex_slug,
           url: attrs?.url,
-          baseToken: {
-            address: addr,
-            name: j?.data?.attributes?.name,
-            symbol: j?.data?.attributes?.symbol,
-          },
+          baseToken: { address: addr, name: j?.data?.attributes?.name, symbol: j?.data?.attributes?.symbol },
           liquidity: { usd: Number(attrs?.reserve_in_usd ?? attrs?.liquidity_usd ?? 0) },
-          txns: {
-            h24: { buys: Number(attrs?.buys_24h ?? 0), sells: Number(attrs?.sells_24h ?? 0) },
-          },
+          txns: { h24: { buys: Number(attrs?.buys_24h ?? 0), sells: Number(attrs?.sells_24h ?? 0) } },
         };
       });
     } catch (e: any) {
