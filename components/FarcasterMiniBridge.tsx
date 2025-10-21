@@ -1,25 +1,44 @@
 // components/FarcasterMiniBridge.tsx
-'use client'
-import Link from 'next/link'
-import { openInMini } from '@/lib/miniapp'
+'use client';
+
 import * as React from 'react';
+import { openInMini } from '@/lib/miniapp';
 
 type Props = {
   href?: string;
   children?: React.ReactNode;
   className?: string;
+  title?: string;
+  'aria-label'?: string;
+  target?: string;
+  rel?: string;
   [x: string]: any;
 };
 
-export default function FarcasterMiniBridge({ href = '#', children, className = '', ...rest }: Props) {
+export default function FarcasterMiniBridge({
+  href = '#',
+  children,
+  className = '',
+  title,
+  ...rest
+}: Props) {
   const onClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // respect modifier/middle-clicks so users can open in new tab etc.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
     await openInMini(href);
   };
+
   return (
-    <Link href={href} onClick={onClick} className={className} {...rest}>
+    <a
+      href={href}
+      onClick={onClick}
+      className={className}
+      title={title}
+      rel={rest.rel ?? 'noopener noreferrer'}
+      {...rest}
+    >
       {children ?? href}
-    </Link>
+    </a>
   );
 }
