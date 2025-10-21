@@ -7,11 +7,19 @@ import Spinner from "@/components/Spinner";
 import type { OpSecReport } from "@/lib/opsec/types";
 import ShareRow from "@/components/ShareRow";
 
+/** Middle-ellipsis any 0x…40 hex address inside a string */
+function prettifyHexIn(note: string) {
+  return note.replace(/0x[a-fA-F0-9]{40}/g, (m) => `${m.slice(0, 6)}…${m.slice(-4)}`);
+}
+
 export default function Page() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
-  const [r, setR] = useState<OpSecReport | (OpSecReport & { upstreamDiagnostics?: any[] }) | null>(null);
+  const [r, setR] = useState<(OpSecReport & { upstreamDiagnostics?: any[] }) | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Debug UX
+  const [debugMode, setDebugMode] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
 
   const disabled = loading || !q.trim();
@@ -25,18 +33,24 @@ export default function Page() {
     setErr(null);
     setLoading(true);
     setR(null);
+    setShowDiag(false);
 
     try {
-      const res = await fetch(`/api/opsec/analyze?query=${encodeURIComponent(query)}`, { cache: "no-store" });
+      const url = `/api/opsec/analyze?query=${encodeURIComponent(query)}${debugMode ? "&debug=1" : ""}`;
+      const res = await fetch(url, { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || `Request failed (${res.status})`);
       setR(payload);
+      // auto-open table if diagnostics present and debugMode is on
+      if (debugMode && Array.isArray(payload?.upstreamDiagnostics) && payload.upstreamDiagnostics.length) {
+        setShowDiag(true);
+      }
     } catch (e: any) {
       setErr(e?.message || "Scan failed. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [q]);
+  }, [q, debugMode]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) analyze();
@@ -58,21 +72,37 @@ export default function Page() {
     []
   );
 
-  // Helpers to render friendly placeholders based on findings
-  const reason = (key: string, fallback = "—") => {
+  // Friendly placeholders based on findings
+  const reason = (key: "markets" | "erc20", fallback = "—") => {
     if (!r) return fallback;
-    if (r.findings?.some(f => f.key === "erc20")) return "Not an ERC-20";
-    const noPairs = r.findings?.some(f => f.key === "markets" && f.note?.includes("No Base DEX pairs"));
-    if (key === "markets" && noPairs) return "No Base DEX pairs";
+    if (key === "erc20" && r.findings?.some(f => f.key === "erc20")) return "Not an ERC-20";
+    if (key === "markets" && r.findings?.some(f => f.key === "markets" && f.note?.includes("No Base DEX pairs"))) {
+      return "No Base DEX pairs";
+    }
     return fallback;
   };
 
   return (
     <AgencyChrome>
       <div className="mx-auto w-full max-w-5xl px-4">
-        <header className="mb-8 text-center">
-          <h1 className="text-4xl font-black tracking-tight">OPSEC</h1>
-          <p className="mt-1 text-white/70">Professional token due-diligence on Base</p>
+        <header className="mb-6 flex items-center justify-between">
+          <div className="text-center md:text-left w-full">
+            <h1 className="text-4xl font-black tracking-tight">OPSEC</h1>
+            <p className="mt-1 text-white/70">Professional token due-diligence on Base</p>
+          </div>
+
+          {/* Debug mode toggle */}
+          <div className="hidden sm:flex items-center gap-2 text-xs">
+            <label className="inline-flex items-center gap-2 select-none">
+              <input
+                type="checkbox"
+                className="accent-emerald-400"
+                checked={debugMode}
+                onChange={(e) => setDebugMode(e.target.checked)}
+              />
+              <span className="text-white/75">Debug mode</span>
+            </label>
+          </div>
         </header>
 
         {/* QUERY BAR */}
@@ -118,14 +148,27 @@ export default function Page() {
             </button>
           </div>
 
-          {/* STATUS / ERROR */}
-          <div className="min-h-[1.75rem] mt-3 text-center">
-            {loading && scanningText}
-            {!loading && err && (
-              <span className="inline-flex items-center text-xs text-red-300 px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10">
-                {err}
-              </span>
-            )}
+          {/* STATUS / ERROR + mobile debug toggle */}
+          <div className="mt-3 flex items-center justify-between">
+            <div className="min-h-[1.75rem]">
+              {loading && scanningText}
+              {!loading && err && (
+                <span className="inline-flex items-center text-xs text-red-300 px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10">
+                  {err}
+                </span>
+              )}
+            </div>
+            <div className="sm:hidden">
+              <label className="inline-flex items-center gap-2 text-xs select-none">
+                <input
+                  type="checkbox"
+                  className="accent-emerald-400"
+                  checked={debugMode}
+                  onChange={(e) => setDebugMode(e.target.checked)}
+                />
+                <span className="text-white/75">Debug</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -149,9 +192,10 @@ export default function Page() {
 
           {r && !loading && (
             <section className="mt-4 rounded-2xl border border-white/10 p-5 bg-[radial-gradient(ellipse_at_top,rgba(0,255,149,0.05),transparent_60%)] overflow-hidden shadow-[0_0_30px_-15px_rgba(0,255,149,0.35)]">
+              {/* Header */}
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div className="text-center md:text-left">
-                  <div className="text-xl font-bold break-all font-mono">
+                  <div className="text-xl font-bold break-words font-mono">
                     {r.name ?? r.symbol ?? r.address}
                   </div>
                   <div className="text-white/60 text-sm break-all font-mono">{r.address}</div>
@@ -161,17 +205,22 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Body */}
               <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Summary */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
                   <h3 className="font-semibold mb-2">Summary</h3>
-                  <div className="space-y-1 text-sm">
+                  <div className="space-y-1 text-sm break-words hyphens-auto">
                     {r.summary.map((s, i) => (
                       <div key={i} className={s.ok ? "text-green-400" : "text-red-400"}>
-                        {s.ok ? "✓" : "✗"} {s.note}
+                        {s.ok ? "✓" : "✗"}{" "}
+                        <span className="font-normal">{prettifyHexIn(s.note)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {/* Key Stats */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
                   <h3 className="font-semibold mb-2">Key Stats</h3>
                   <div className="space-y-2">
@@ -200,6 +249,7 @@ export default function Page() {
                 </div>
               </div>
 
+              {/* Share + Sources */}
               <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
                 <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
                 <div className="self-start md:self-auto">
@@ -215,8 +265,8 @@ export default function Page() {
                 </div>
               </div>
 
-              {/* Debug (appears only if API returned diagnostics via ?debug=1) */}
-              {(r as any)?.upstreamDiagnostics && (
+              {/* Diagnostics panel (only if API returned diagnostics) */}
+              {Array.isArray((r as any).upstreamDiagnostics) && (
                 <div className="mt-4">
                   <button
                     onClick={() => setShowDiag(v => !v)}
@@ -243,7 +293,7 @@ export default function Page() {
                               <td className="p-2 whitespace-nowrap">{d.status ?? (d.ok ? "OK" : "—")}</td>
                               <td className="p-2 whitespace-nowrap">{d.ms}</td>
                               <td className="p-2">{d.note || ""}</td>
-                              <td className="p-2 max-w-[280px] truncate">{d.url}</td>
+                              <td className="p-2 max-w-[360px] truncate">{d.url}</td>
                             </tr>
                           ))}
                         </tbody>
