@@ -30,15 +30,15 @@ type SourceBlock =
       gas?: { buy?: number | string; sell?: number | string };
     }
   | {
-    ok: true;
-    source: "Dexscreener";
-    pairUrl?: string;
-    baseToken?: string;
-    quoteToken?: string;
-    liquidityUSD?: number;
-    volume24h?: number;
-    priceUSD?: number | string;
-  }
+      ok: true;
+      source: "Dexscreener";
+      pairUrl?: string;
+      baseToken?: string;
+      quoteToken?: string;
+      liquidityUSD?: number;
+      volume24h?: number;
+      priceUSD?: number | string;
+    }
   | { ok: false; source: string; error?: string };
 
 type ApiResponse = {
