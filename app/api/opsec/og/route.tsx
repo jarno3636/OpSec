@@ -1,11 +1,12 @@
+/* eslint-disable @next/next/no-img-element */
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const grade = searchParams.get("grade") ?? "—";
-  const name = searchParams.get("name") ?? "Token";
+  const name = (searchParams.get("name") ?? "Token").slice(0, 32);
+  const summary = (searchParams.get("summary") ?? "Security snapshot").slice(0, 140);
 
   return new ImageResponse(
     (
@@ -13,35 +14,42 @@ export async function GET(req: Request) {
         style={{
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
-          width: "100%",
-          height: "100%",
-          background: "linear-gradient(135deg, #0a0a0a 0%, #1c1c1c 100%)",
+          width: "1200px",
+          height: "630px",
+          padding: "60px",
+          background: "linear-gradient(135deg, #0a0a0a 0%, #151515 50%, #0a0a0a 100%)",
           color: "#fff",
-          padding: "64px",
           fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
-          letterSpacing: "-0.02em",
+          letterSpacing: "-0.01em",
         }}
       >
-        {/* Header / Branding */}
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div
-            style={{
-              fontSize: 64,
-              fontWeight: 900,
-              color: "#00FF95",
-              textTransform: "uppercase",
-            }}
-          >
-            OpSec
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                background: "#00FF95",
+                color: "#000",
+                fontWeight: 900,
+                fontSize: 36,
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              O
+            </div>
+            <div style={{ fontSize: 44, fontWeight: 900, color: "#00FF95" }}>OpSec</div>
           </div>
           <div
             style={{
-              fontSize: 32,
-              color: "rgba(255,255,255,0.8)",
-              fontWeight: 500,
+              fontSize: 30,
+              color: "rgba(255,255,255,0.85)",
+              fontWeight: 600,
               textAlign: "right",
-              maxWidth: "60%",
+              maxWidth: "55%",
               lineHeight: 1.2,
             }}
           >
@@ -52,62 +60,55 @@ export async function GET(req: Request) {
         {/* Divider */}
         <div
           style={{
-            height: "1px",
+            height: 1,
             width: "100%",
-            background: "linear-gradient(90deg, rgba(0,255,149,0.6), rgba(255,255,255,0.15))",
-            margin: "24px 0",
+            background:
+              "linear-gradient(90deg, rgba(0,255,149,0.7), rgba(255,255,255,0.15), rgba(0,255,149,0.3))",
+            margin: "24px 0 28px",
           }}
         />
 
-        {/* Grade Badge */}
+        {/* Summary card */}
+        <div
+          style={{
+            marginTop: 10,
+            borderRadius: 24,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(255,255,255,0.04)",
+            padding: 28,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          <div style={{ fontSize: 20, color: "rgba(255,255,255,0.7)" }}>Share Summary</div>
+          <div
+            style={{
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+              fontSize: 26,
+              color: "#E7FBEF",
+            }}
+          >
+            {summary}
+          </div>
+        </div>
+
+        {/* Footer */}
         <div
           style={{
             marginTop: "auto",
             display: "flex",
+            justifyContent: "space-between",
             alignItems: "center",
-            justifyContent: "flex-end",
-            height: "100%",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 160,
-              fontWeight: 900,
-              color:
-                grade === "A"
-                  ? "#00FF95"
-                  : grade === "B"
-                  ? "#A5FFB8"
-                  : grade === "C"
-                  ? "#FFD35B"
-                  : grade === "D"
-                  ? "#FF8F5B"
-                  : "#FF4E4E",
-              textShadow: "0 0 25px rgba(0,255,149,0.4)",
-            }}
-          >
-            {grade}
-          </div>
-        </div>
-
-        {/* Footer Line */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 32,
-            left: 64,
+            color: "rgba(255,255,255,0.6)",
             fontSize: 20,
-            opacity: 0.5,
-            letterSpacing: "0.05em",
           }}
         >
-          Base Network — Automated Token Analysis
+          <div>Base Network — Aggregated Security Snapshot</div>
+          <div style={{ color: "#00FF95", fontWeight: 600 }}>goplus • honeypot.is • dexscreener</div>
         </div>
       </div>
     ),
-    {
-      width: 1200,
-      height: 630,
-    }
+    { width: 1200, height: 630 }
   );
 }
