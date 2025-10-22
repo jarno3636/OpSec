@@ -5,7 +5,7 @@ const FARCASTER_MINIAPP_LINK =
   "https://farcaster.xyz/miniapps/Qf8jBZwyZkJZ/opsec--token-due-diligence";
 
 const SHARE_IMAGE =
-  "https://opsec-mini.vercel.app/opsec-report-banner.png"; // your black-background “Get your OpSec Report” banner
+  "https://opsec-mini.vercel.app/opsec-report-banner.PNG"; // your black-background “Get your OpSec Report” banner
 
 /* ---------- Randomized, context-neutral short phrases ---------- */
 const MESSAGES = [
