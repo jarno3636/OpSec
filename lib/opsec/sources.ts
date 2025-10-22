@@ -1,4 +1,5 @@
-import { Address } from "viem";
+// ✅ must be type-only under TS 5.6+ with verbatimModuleSyntax
+import type { Address } from "viem";
 
 /* ------------------------- Honeypot.is ------------------------- */
 export async function fetchHoneypot(address: Address) {
