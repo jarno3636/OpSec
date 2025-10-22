@@ -1,4 +1,3 @@
-// app/opsec/page.tsx
 "use client";
 
 import React, { Suspense, useCallback, useMemo, useState } from "react";
@@ -44,7 +43,9 @@ function OpsecClient() {
     setShowDiag(false);
 
     try {
-      const url = `/api/opsec/analyze?query=${encodeURIComponent(query)}${debugMode ? "&debug=1" : ""}`;
+      const url = `/api/opsec/analyze?query=${encodeURIComponent(query)}${
+        debugMode ? "&debug=1" : ""
+      }`;
       const res = await fetch(url, { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || `Request failed (${res.status})`);
@@ -72,7 +73,7 @@ function OpsecClient() {
     () => (
       <span className="inline-flex items-center gap-2 text-xs text-white/80 px-3 py-1 rounded-lg border border-white/10 bg-white/5">
         <Spinner size={14} />
-        Running checks — BaseScan • GoPlus • DEX Screener • Honeypot
+        Running checks — BaseScan • GoPlus • DEX Screener • Honeypot • Socials
         <span className="animate-pulse">…</span>
       </span>
     ),
@@ -82,7 +83,10 @@ function OpsecClient() {
   const reason = (key: "markets" | "erc20", fallback = "—") => {
     if (!r) return fallback;
     if (key === "erc20" && r.findings?.some((f) => f.key === "erc20")) return "Not an ERC-20";
-    if (key === "markets" && r.findings?.some((f) => f.key === "markets" && f.note?.includes("No Base DEX pairs"))) {
+    if (
+      key === "markets" &&
+      r.findings?.some((f) => f.key === "markets" && f.note?.includes("No Base DEX pairs"))
+    ) {
       return "No Base DEX pairs";
     }
     return fallback;
@@ -91,34 +95,64 @@ function OpsecClient() {
   const f = (k: string) => r?.findings?.find((x) => x.key === k);
   const ownerNote = f("owner")?.note;
   const proxyNote = f("proxy")?.note;
-  const lpNote    = f("lp_lock")?.note;
+  const lpNote = f("lp_lock")?.note;
   const blacklist = f("blacklist")?.note;
-  const taxSwing  = f("tax_swing")?.note;
-  const gpNote    = f("goplus")?.note;
-  const hpNote    = f("honeypot")?.note;
+  const taxSwing = f("tax_swing")?.note;
+  const gpNote = f("goplus")?.note;
+  const hpNote = f("honeypot")?.note;
 
   const SocialsBlock = () =>
-    r?.socials && (r.socials.website || r.socials.twitter || r.socials.telegram || r.socials.github || r.socials.warpcast || r.socials.coingecko) ? (
+    r?.socials &&
+    (r.socials.website ||
+      r.socials.twitter ||
+      r.socials.telegram ||
+      r.socials.github ||
+      r.socials.warpcast ||
+      r.socials.coingecko) ? (
       <div className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
         <h3 className="font-semibold mb-2">Socials</h3>
         <ul className="text-sm text-sky-300 space-y-1">
           {r.socials.website && (
-            <li><a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.website}>Website</a></li>
+            <li>
+              <a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.website}>
+                Website
+              </a>
+            </li>
           )}
           {r.socials.twitter && (
-            <li><a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.twitter}>Twitter / X</a></li>
+            <li>
+              <a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.twitter}>
+                Twitter / X
+              </a>
+            </li>
           )}
           {r.socials.telegram && (
-            <li><a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.telegram}>Telegram</a></li>
+            <li>
+              <a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.telegram}>
+                Telegram
+              </a>
+            </li>
           )}
           {r.socials.github && (
-            <li><a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.github}>GitHub</a></li>
+            <li>
+              <a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.github}>
+                GitHub
+              </a>
+            </li>
           )}
           {r.socials.warpcast && (
-            <li><a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.warpcast}>Warpcast</a></li>
+            <li>
+              <a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.warpcast}>
+                Warpcast
+              </a>
+            </li>
           )}
           {r.socials.coingecko && (
-            <li><a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.coingecko}>CoinGecko</a></li>
+            <li>
+              <a className="hover:underline" target="_blank" rel="noreferrer" href={r.socials.coingecko}>
+                CoinGecko
+              </a>
+            </li>
           )}
         </ul>
       </div>
@@ -193,7 +227,7 @@ function OpsecClient() {
         </div>
 
         {/* RESULT */}
-        <div className="mx-auto w/full max-w-3xl">
+        <div className="mx-auto w-full max-w-3xl">
           {loading && (
             <div className="mt-4 rounded-2xl border border-white/10 p-4 bg-white/[0.04] overflow-hidden">
               <div className="animate-pulse space-y-4">
@@ -289,13 +323,19 @@ function OpsecClient() {
 
               {/* Links + Share */}
               <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03] flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <span className="text-xs text-white/50">Sources: BaseScan, GoPlus, DEX Screener, Honeypot</span>
+                <span className="text-xs text-white/50">
+                  Sources: BaseScan, GoPlus, DEX Screener, Honeypot
+                </span>
                 <div className="self-start md:self-auto">
                   <ShareRow
                     token={r.symbol ?? r.name ?? r.address}
                     grade={r.grade}
-                    liquidityUSD={typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined}
-                    topHolderPct={typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined}
+                    liquidityUSD={
+                      typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined
+                    }
+                    topHolderPct={
+                      typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined
+                    }
                     buySellRatio={r.metrics.buySellRatio}
                     url={r.permalink}
                     image={r.imageUrl}
