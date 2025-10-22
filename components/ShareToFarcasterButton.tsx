@@ -24,13 +24,10 @@ function isInFarcasterEnv(): boolean {
 }
 
 type Props = {
-  text: string;
-  /** Preferred: single embed URL */
-  embed?: string;
-  /** (Legacy) If provided, we take only the first as the single embed. */
-  embeds?: string[] | readonly string[];
-  /** Optional web-composer target (ignored by SDK cast) */
-  url?: string;
+  text: string;              // full text (we include miniapp link here)
+  embed?: string;            // single image URL (banner)
+  embeds?: string[] | readonly string[]; // legacy; we’ll only use the first
+  url?: string;              // optional; used only by web composer
   className?: string;
   disabled?: boolean;
   title?: string;
