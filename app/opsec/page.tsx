@@ -73,7 +73,7 @@ export default function OpSecPage() {
     }
   };
 
-  // try to infer a token symbol/name from sources (Dexscreener baseToken) or API fields, fallback to address
+  // infer token name/symbol (UPPERCASED); fallback to address
   const inferredName = useMemo(() => {
     const ds = Array.isArray(data?.sources)
       ? data.sources.find((s: any) => s?.source === "Dexscreener" && s?.ok)
@@ -115,7 +115,7 @@ export default function OpSecPage() {
 
         {data && (
           <div className="space-y-5">
-            {/* Header: TOKEN + address */}
+            {/* Header: TOKEN (UPPERCASE) + address (wrapped) */}
             <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.03]">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                 <div className="text-xl font-black">{inferredName}</div>
@@ -192,7 +192,7 @@ export default function OpSecPage() {
               </div>
             ))}
 
-            {/* Share (pass name so it’s always UPPERCASED in text; embed is the summary OG) */}
+            {/* Share (pass name for uppercase; embed is the OG summary) */}
             <ShareSummary summary={data.summary} address={data.address} name={inferredName} />
           </div>
         )}
