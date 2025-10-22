@@ -1,10 +1,10 @@
-// components/ShareToFarcasterButton.tsx
 "use client";
 
 import * as React from "react";
 import { composeCast } from "@/lib/miniapp";
 import { buildWarpcastCompose } from "@/lib/share";
 
+/** Detect if we're inside Warpcast / Farcaster MiniApp */
 function isInFarcasterEnv(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -24,9 +24,18 @@ function isInFarcasterEnv(): boolean {
 }
 
 type Props = {
+  /** Plain text for the cast (summary line etc.). We never auto-append URLs here. */
   text: string;
+
+  /** ✅ Preferred: single embed URL (e.g., your OG summary image). */
+  embed?: string;
+
+  /** (Legacy) If provided, we will *take only the first* as the single embed. */
   embeds?: string[] | readonly string[];
-  url?: string; // ignored for Farcaster text; useful for web composer
+
+  /** Optional web composer target (ignored for SDK). We still won't inject it into text. */
+  url?: string;
+
   className?: string;
   disabled?: boolean;
   title?: string;
@@ -36,6 +45,7 @@ type Props = {
 
 export default function ShareToFarcasterButton({
   text,
+  embed,
   embeds = [],
   url,
   className,
@@ -45,17 +55,22 @@ export default function ShareToFarcasterButton({
   onDone,
 }: Props) {
   const onClick = React.useCallback(async () => {
-    const fullText = (text || "").trim(); // NEVER append URL here
-    const embedList: string[] = Array.isArray(embeds) ? embeds.map(String) : [];
+    const fullText = (text || "").trim();
+
+    // Always enforce a SINGLE embed
+    const firstFromArray =
+      Array.isArray(embeds) && embeds.length > 0 ? String(embeds[0]) : undefined;
+    const firstEmbed = (embed || firstFromArray || "").trim();
+    const singleEmbedList = firstEmbed ? [firstEmbed] : [];
 
     if (isInFarcasterEnv()) {
-      const ok = await (composeCast as any)({ text: fullText, embeds: embedList });
+      const ok = await (composeCast as any)({ text: fullText, embeds: singleEmbedList });
       if (ok) return onDone?.("sdk");
       onDone?.("noop");
       return;
     }
 
-    const href = buildWarpcastCompose({ text: fullText, url, embeds: embedList });
+    const href = buildWarpcastCompose({ text: fullText, url, embeds: singleEmbedList });
     try {
       const w = window.open(href, "_blank", "noopener,noreferrer");
       if (!w) window.location.href = href;
@@ -68,7 +83,7 @@ export default function ShareToFarcasterButton({
         onDone?.("noop");
       }
     }
-  }, [text, url, embeds, onDone]);
+  }, [text, url, embed, embeds, onDone]);
 
   return (
     <button
