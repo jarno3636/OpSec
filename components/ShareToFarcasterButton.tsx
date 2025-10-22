@@ -24,18 +24,13 @@ function isInFarcasterEnv(): boolean {
 }
 
 type Props = {
-  /** Plain text for the cast (summary line etc.). We never auto-append URLs here. */
   text: string;
-
-  /** ✅ Preferred: single embed URL (e.g., your OG summary image). */
+  /** Preferred: single embed URL */
   embed?: string;
-
-  /** (Legacy) If provided, we will *take only the first* as the single embed. */
+  /** (Legacy) If provided, we take only the first as the single embed. */
   embeds?: string[] | readonly string[];
-
-  /** Optional web composer target (ignored for SDK). We still won't inject it into text. */
+  /** Optional web-composer target (ignored by SDK cast) */
   url?: string;
-
   className?: string;
   disabled?: boolean;
   title?: string;
@@ -57,7 +52,7 @@ export default function ShareToFarcasterButton({
   const onClick = React.useCallback(async () => {
     const fullText = (text || "").trim();
 
-    // Always enforce a SINGLE embed
+    // enforce SINGLE embed
     const firstFromArray =
       Array.isArray(embeds) && embeds.length > 0 ? String(embeds[0]) : undefined;
     const firstEmbed = (embed || firstFromArray || "").trim();
