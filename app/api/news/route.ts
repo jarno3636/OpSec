@@ -9,31 +9,34 @@ type Story = {
   link: string;
   description?: string;
   publishedAt?: string | null;
+  sourceName?: string;
+  sourceDomain?: string;
 };
 
 let cached: { stories: Story[]; updatedAt: number } | null = null;
 
 export const dynamic = "force-dynamic";
 
-// You can tweak/trim sources – order matters (earlier ones get priority)
+// Diverse sources with security/exploit focus + majors
 const SOURCES = [
-  { key: "rekt", url: "https://rekt.news/index.xml" },
-  { key: "rekt-en", url: "https://rekt.news/en/index.xml" },
-  { key: "defillama-wars", url: "https://rsshub.app/defillama/wars" },
-  { key: "coindesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },
-  { key: "theblock", url: "https://www.theblock.co/rss" },
+  { name: "Rekt",           domain: "rekt.news",          url: "https://rekt.news/index.xml" },
+  { name: "DeFiLlama Wars", domain: "defillama.com",      url: "https://rsshub.app/defillama/wars" },
+  { name: "Decrypt",        domain: "decrypt.co",         url: "https://decrypt.co/feed" },
+  { name: "Cointelegraph",  domain: "cointelegraph.com",  url: "https://cointelegraph.com/rss" },
+  { name: "CoinDesk",       domain: "coindesk.com",       url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },
+  { name: "The Block",      domain: "theblock.co",        url: "https://www.theblock.co/feed" },
 ];
 
 function stripHtml(input: string) {
   return input.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, "").trim();
 }
 
-function firstOr<T = string>(m: RegExpMatchArray | null, def = ""): string {
+function firstOr(m: RegExpMatchArray | null, def = ""): string {
   return (m?.[1] ?? def).toString().trim();
 }
 
-function parseItemsFromXml(xml: string, max = 6): Story[] {
-  // RSS 2.0: <item>…</item>
+function parseItemsFromXml(xml: string, max = 6): Omit<Story, "sourceName" | "sourceDomain">[] {
+  // RSS 2.0
   const rssItems = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)).slice(0, max);
   if (rssItems.length) {
     return rssItems.map((m) => {
@@ -55,12 +58,11 @@ function parseItemsFromXml(xml: string, max = 6): Story[] {
     });
   }
 
-  // Atom: <entry>…</entry>
+  // Atom
   const atomEntries = Array.from(xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)).slice(0, max);
   return atomEntries.map((m) => {
     const it = m[1] || "";
     const title = firstOr(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(it));
-    // Atom links often appear as <link href="..." />
     const linkTag = /<link[^>]*href="([^"]+)"[^>]*\/?>/i.exec(it);
     const link = firstOr(linkTag);
     const desc =
@@ -79,17 +81,15 @@ function parseItemsFromXml(xml: string, max = 6): Story[] {
 }
 
 async function fetchWithTimeout(url: string, ms = 8000) {
-  const c = new AbortController();
-  const t = setTimeout(() => c.abort(), ms);
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
   try {
     return await fetch(url, {
-      signal: c.signal,
+      signal: controller.signal,
       headers: {
-        // Some feeds are picky; give a friendly UA
         "user-agent": "OpSecNewsBot/1.0 (+https://opsec-mini.vercel.app)",
         accept: "application/rss+xml, application/atom+xml, text/xml, */*",
       },
-      // Let Next/cache reuse for 12h; we also keep our own memory cache
       next: { revalidate: 60 * 60 * 12 },
     });
   } finally {
@@ -98,7 +98,6 @@ async function fetchWithTimeout(url: string, ms = 8000) {
 }
 
 export async function GET() {
-  // Serve warm cache if fresh
   const now = Date.now();
   if (cached && now - cached.updatedAt < TTL_MS && cached.stories.length) {
     return NextResponse.json(
@@ -107,24 +106,26 @@ export async function GET() {
     );
   }
 
-  // Rebuild cache
   const settled = await Promise.allSettled(
     SOURCES.map(async (s) => {
       const r = await fetchWithTimeout(s.url);
-      if (!r.ok) throw new Error(`${s.key} ${r.status}`);
+      if (!r.ok) throw new Error(`${s.domain} ${r.status}`);
       const xml = await r.text();
-      const items = parseItemsFromXml(xml, 6);
+      const items = parseItemsFromXml(xml, 6).map((it) => ({
+        ...it,
+        sourceName: s.name,
+        sourceDomain: s.domain,
+      }));
       return items;
     })
   );
 
-  const stories = settled
+  const stories: Story[] = settled
     .flatMap((res) => (res.status === "fulfilled" ? res.value : []))
     .filter((x) => x.link && x.title)
     .sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""))
-    .slice(0, 10);
+    .slice(0, 12);
 
-  // If nothing came back but we had an old cache, keep serving it
   if (!stories.length && cached?.stories?.length) {
     return NextResponse.json(
       { updatedAt: new Date(cached.updatedAt).toISOString(), stories: cached.stories },
