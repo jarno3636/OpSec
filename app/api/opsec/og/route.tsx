@@ -5,8 +5,9 @@ export const runtime = "edge";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const name = (searchParams.get("name") ?? "Token").slice(0, 32);
-  const summary = (searchParams.get("summary") ?? "Security snapshot").slice(0, 140);
+  // keep name short and UPPERCASED for visual consistency
+  const name = (searchParams.get("name") ?? "TOKEN").toUpperCase().slice(0, 32);
+  const summary = (searchParams.get("summary") ?? "Security snapshot").slice(0, 220);
 
   return new ImageResponse(
     (
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
             style={{
               fontSize: 30,
               color: "rgba(255,255,255,0.85)",
-              fontWeight: 600,
+              fontWeight: 700,
               textAlign: "right",
               maxWidth: "55%",
               lineHeight: 1.2,
@@ -84,9 +85,11 @@ export async function GET(req: Request) {
           <div style={{ fontSize: 20, color: "rgba(255,255,255,0.7)" }}>Share Summary</div>
           <div
             style={{
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
               fontSize: 26,
               color: "#E7FBEF",
+              whiteSpace: "pre-wrap",
             }}
           >
             {summary}
