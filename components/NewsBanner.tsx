@@ -8,6 +8,8 @@ type Story = {
   link: string;
   description?: string;
   publishedAt?: string | null;
+  sourceName?: string;
+  sourceDomain?: string;
 };
 
 export default function NewsBanner() {
@@ -24,16 +26,13 @@ export default function NewsBanner() {
         const r = await fetch("/api/news", { cache: "no-store" });
         const j = await r.json().catch(() => ({}));
         if (alive && Array.isArray(j?.stories)) {
-          // keep it reasonable for dots; you can increase if you want
           setStories(j.stories.slice(0, 10));
         }
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   // Snap/scroll position → active dot
@@ -47,7 +46,7 @@ export default function NewsBanner() {
       ticking = true;
       requestAnimationFrame(() => {
         const { scrollLeft, clientWidth } = el;
-        const idx = Math.round(scrollLeft / clientWidth);
+        const idx = Math.round(scrollLeft / Math.max(1, clientWidth));
         setActive(idx);
         ticking = false;
       });
@@ -82,20 +81,16 @@ export default function NewsBanner() {
   }, [loading, stories.length]);
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 md:p-6">
+    <section className="rounded-3xl border border-white/10 bg-white/[0.04] overflow-hidden">
       {/* Header */}
-      <div className="mb-4 md:mb-5 flex items-end justify-between">
+      <div className="px-5 md:px-6 py-4 md:py-5 border-b border-white/10 bg-white/[0.03] flex items-end justify-between">
         <div>
-          <div className="text-2xl md:text-3xl font-extrabold tracking-tight">
-            Security News&nbsp;
-            <span className="text-scan">/ Daily</span>
-          </div>
-          <div className="mt-1 text-xs md:text-sm text-white/60">
-            {headerSubtitle}
-          </div>
+          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight leading-none">
+            Latest Security Headlines <span className="text-scan">/ Daily</span>
+          </h2>
+          <div className="mt-1 text-xs md:text-sm text-white/60">{headerSubtitle}</div>
         </div>
 
-        {/* Optional nav buttons (hidden when loading/empty) */}
         {stories.length > 0 && (
           <div className="hidden md:flex items-center gap-2">
             <button
@@ -122,45 +117,32 @@ export default function NewsBanner() {
       <div
         ref={scrollerRef}
         className="
-          relative
-          -mx-4 md:-mx-6 px-4 md:px-6
+          hide-scrollbar
+          -mx-5 md:-mx-6 px-5 md:px-6
           overflow-x-auto
           scroll-smooth
           snap-x snap-mandatory
-          flex
-          gap-4 md:gap-6
-          [scrollbar-width:none]
+          flex gap-4 md:gap-6
         "
-        style={{
-          msOverflowStyle: "none",
-        }}
+        style={{ msOverflowStyle: "none" }}
       >
         {/* hide webkit scrollbar */}
-        <style>{`
-          .hide-scrollbar::-webkit-scrollbar{ display: none; }
-        `}</style>
+        <style>{`.hide-scrollbar::-webkit-scrollbar{ display: none; }`}</style>
 
         {loading ? (
-          <>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="
-                  snap-start
-                  shrink-0
-                  w-full
-                  md:w-[calc(100%-3rem)]
-                  rounded-2xl border border-white/10 bg-white/[0.05]
-                  h-40 md:h-44
-                  animate-pulse
-                "
-              />
-            ))}
-          </>
+          Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="
+                snap-start shrink-0
+                w-full min-w-full
+                rounded-2xl border border-white/10 bg-white/[0.05]
+                h-40 md:h-44 animate-pulse
+              "
+            />
+          ))
         ) : stories.length === 0 ? (
-          <div className="text-sm text-white/60">
-            We couldn’t load headlines right now.
-          </div>
+          <div className="p-5 text-sm text-white/60">We couldn’t load headlines right now.</div>
         ) : (
           stories.map((s, i) => (
             <a
@@ -170,31 +152,38 @@ export default function NewsBanner() {
               rel="noreferrer"
               className="
                 group
-                snap-start
-                shrink-0
-                w-full
+                snap-start shrink-0
+                w-full min-w-full
                 rounded-2xl border border-white/10 bg-white/[0.03]
-                p-4 md:p-5
-                hover:bg-white/[0.06] transition
+                p-4 md:p-5 hover:bg-white/[0.06] transition
               "
-              style={{
-                // Each card fills the viewport width to make snap feel like pages
-                // Adjust on larger screens to contain within section width
-                minWidth: "100%",
-              }}
             >
-              <div className="text-base md:text-lg font-semibold text-sky-300 group-hover:underline">
-                {s.title || "Untitled"}
+              <div className="flex items-center gap-2 text-[11px] md:text-xs text-white/60 mb-1">
+                {s.sourceDomain && (
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(s.sourceDomain)}&sz=64`}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="inline-block rounded-[3px] opacity-80"
+                  />
+                )}
+                <span className="uppercase tracking-wide">{s.sourceName || s.sourceDomain}</span>
+                {s.publishedAt && (
+                  <span className="opacity-60">
+                    • {new Date(s.publishedAt).toLocaleDateString()}
+                  </span>
+                )}
               </div>
+
+              <h3 className="text-base md:text-lg font-semibold leading-snug group-hover:underline">
+                {s.title || "Untitled"}
+              </h3>
+
               {s.description && (
-                <p className="mt-2 text-sm text-white/70 max-h-20 overflow-hidden">
+                <p className="mt-2 text-sm text-white/70 line-clamp-3">
                   {s.description}
                 </p>
-              )}
-              {s.publishedAt && (
-                <div className="mt-3 text-[11px] text-white/40">
-                  {new Date(s.publishedAt).toLocaleString()}
-                </div>
               )}
             </a>
           ))
@@ -203,16 +192,15 @@ export default function NewsBanner() {
 
       {/* Dots */}
       {stories.length > 1 && (
-        <div className="mt-4 flex items-center justify-center gap-2">
+        <div className="mt-4 pb-4 flex items-center justify-center gap-2">
           {stories.map((_, i) => (
             <button
               key={i}
               onClick={() => goTo(i)}
               aria-label={`Go to slide ${i + 1}`}
-              className={`
-                h-2.5 w-2.5 rounded-full transition
-                ${i === active ? "bg-scan shadow-[0_0_12px_rgba(0,255,149,0.6)]" : "bg-white/25 hover:bg-white/40"}
-              `}
+              className={`h-2.5 w-2.5 rounded-full transition ${
+                i === active ? "bg-scan shadow-[0_0_12px_rgba(0,255,149,0.6)]" : "bg-white/25 hover:bg-white/40"
+              }`}
             />
           ))}
         </div>
