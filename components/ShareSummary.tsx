@@ -2,46 +2,46 @@
 import React from "react";
 import { Twitter } from "lucide-react";
 import ShareToFarcasterButton from "@/components/ShareToFarcasterButton";
+import { buildSummaryOg } from "@/lib/share";
 
-/**
- * Displays a shareable snippet and wires up:
- *  • X share: uses the page URL (which carries OG image)
- *  • Farcaster: uses the summary OG image as the SINGLE embed
- */
 export default function ShareSummary({
   summary,
   address,
   name,
-  image, // optional override for embed
+  image,
 }: {
   summary: string;
   address: string;
-  name?: string;     // token name/symbol; we'll uppercase for text
-  image?: string;    // explicit embed URL if provided
+  name?: string;   // inferred token name or symbol, optional
+  image?: string;  // optional explicit embed override
 }) {
-  const baseUrl =
+  const base =
     typeof window !== "undefined"
       ? window.location.origin
       : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-  const shareUrl = `${baseUrl}/opsec/${address}`;
 
-  // Uppercased token label for display
-  const token = (name || `${address.slice(0, 6)}…${address.slice(-4)}`).toString().toUpperCase();
+  const shareUrl = `${base}/opsec/${address}`;
+  const tokenRaw = (name && String(name)) || `${address.slice(0,6)}…${address.slice(-4)}`;
+  const TOKEN = tokenRaw.toUpperCase();
+  const CASH_TAG = `$${TOKEN.replace(/^\$+/, "")}`;
 
-  // Cashtag (no space) for share text. Only add `$` for plain ticker-like tokens.
-  const cashtag = /^[A-Z0-9]{2,15}$/.test(token) ? `$${token}` : token;
-
-  // Build our OG summary card URL for the embed (single image)
+  // Build our OG image for the composer embed (single, absolute URL)
   const ogEmbed =
     image ||
-    `${baseUrl}/api/opsec/og?name=${encodeURIComponent(token)}&summary=${encodeURIComponent(
-      (summary || "").slice(0, 220)
-    )}`;
+    buildSummaryOg({
+      name: TOKEN,                               // big headline on card
+      summary: (summary || "").slice(0, 220),    // safe length
+      baseUrl: base,
+    });
 
-  const tweet = `${cashtag} — ${summary}\n\n🔍 via OpSec (on Base)\n${shareUrl}`;
+  const tweet = `${CASH_TAG} — ${summary}\n\n🔍 via OpSec (on Base)\n${shareUrl}`;
 
   const shareToX = () =>
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}`, "_blank");
+    window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 space-y-2 mt-4">
@@ -57,9 +57,9 @@ export default function ShareSummary({
           <Twitter size={16} /> Share on X
         </button>
 
-        {/* Farcaster: always one embed (the summary OG) */}
+        {/* Farcaster: always ONE embed (the summary OG) */}
         <ShareToFarcasterButton
-          text={`${cashtag} — quick security summary`}
+          text={`${CASH_TAG} — quick security summary`}
           embed={ogEmbed}
           url={shareUrl}
         >
