@@ -4,7 +4,7 @@ import Link from "next/link";
 import AgencyChrome from "@/components/AgencyChrome";
 import Logo from "@/components/Logo";
 import ShareSummary from "@/components/ShareSummary";
-import NewsBanner from "@/components/NewsBanner"; // ← NEW
+import NewsBanner from "@/components/NewsBanner";
 
 export const metadata: Metadata = {
   title: "OpSec — Token Security Aggregator for Base",
@@ -72,9 +72,7 @@ export default function HomePage() {
 
         {/* Example share */}
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-xl font-semibold text-white/80 mb-3">
-            Example Share Summary
-          </h2>
+          <h2 className="text-xl font-semibold text-white/80 mb-3">Example Share Summary</h2>
           <ShareSummary
             summary="✅ Appears safe — Buy/Sell OK: ✅/✅ · Taxes 2%/2%"
             address="0x1234567890abcdef1234567890abcdef12345678"
