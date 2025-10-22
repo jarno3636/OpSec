@@ -1,3 +1,4 @@
+// lib/share.ts
 import { composeCast } from "./miniapp";
 
 /* ---------- Config ---------- */
@@ -67,20 +68,31 @@ function isSameOrigin(urlA: string, urlB: string) {
   }
 }
 
-/** Normalize embeds and enforce a SINGLE embed. */
+/* ---------- Embeds: normalize & enforce SINGLE ---------- */
 function normEmbeds(embeds?: string | string[]): string[] {
   if (!embeds) return [];
-  const list = Array.isArray(embeds) ? embeds : [embeds];
-  const first = list.find(Boolean);
+  const first = (Array.isArray(embeds) ? embeds : [embeds]).find(Boolean);
   const url = first ? safeUrl(first) : "";
   return url ? [url] : [];
 }
 
-/** Prefer the mini link when we’re inside Warpcast and the URL is same-origin. */
+/* ---------- OG Summary helper (used by ShareSummary) ---------- */
+export function buildSummaryOg(params: { name: string; summary: string; baseUrl?: string }) {
+  const base = (params.baseUrl || siteOrigin()).replace(/\/$/, "");
+  const name = (params.name || "").slice(0, 32);
+  const summary = (params.summary || "").slice(0, 220); // keep it short and safe
+  const u = new URL("/api/opsec/og", base);
+  u.searchParams.set("name", name);
+  u.searchParams.set("summary", summary);
+  return u.toString();
+}
+
+/* ---------- Prefer Mini URL when possible ---------- */
 export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = {}) {
   const canonical = safeUrl(webUrl);
   if (!canonical) return "";
 
+  // Already a compose deep link
   if (/^warpcast:|^farcaster:/i.test(canonical)) return canonical;
   if (/^https:\/\/warpcast\.com\/~\/compose/i.test(canonical)) return canonical;
 
@@ -103,13 +115,13 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   }
 }
 
-/** Warpcast web composer URL (we pass only ONE embed). */
+/* ---------- Warpcast web composer (single embed) ---------- */
 export function buildWarpcastCompose({
   url = "",
   text = "",
   embeds = [],
 }: {
-  url?: string;
+  url?: string; // kept for parity, but we never inject into text
   text?: string;
   embeds?: string[];
 }) {
@@ -118,19 +130,19 @@ export function buildWarpcastCompose({
   const base = "https://warpcast.com/~/compose";
   const params = new URLSearchParams();
   if (wcText) params.set("text", wcText);
-  if (singleEmbed[0]) params.append("embeds[]", singleEmbed[0]); // only one
+  if (singleEmbed[0]) params.append("embeds[]", singleEmbed[0]); // always one
   return `${base}?${params.toString()}`;
 }
 
-/** Try SDK compose in Warpcast; else open web composer. Always one embed. */
+/* ---------- Share/Cast orchestrator (SDK first) ---------- */
 export async function shareOrCast({
   text = "",
   embeds = [],
   url = "",
 }: {
   text?: string;
-  embeds?: string[]; // we will reduce to 1
-  url?: string;
+  embeds?: string[]; // will be reduced to 1
+  url?: string; // only used to compute mini/url preference elsewhere
 }) {
   const fullText = (text || "").trim();
   const singleEmbed = normEmbeds(embeds);
