@@ -1,8 +1,10 @@
+// app/page.tsx
 import type { Metadata } from "next";
 import Link from "next/link";
 import AgencyChrome from "@/components/AgencyChrome";
 import Logo from "@/components/Logo";
 import ShareSummary from "@/components/ShareSummary";
+import NewsBanner from "@/components/NewsBanner"; // ← NEW
 
 export const metadata: Metadata = {
   title: "OpSec — Token Security Aggregator for Base",
@@ -36,6 +38,7 @@ export default function HomePage() {
   return (
     <AgencyChrome>
       <div className="max-w-5xl mx-auto px-4 py-12 space-y-12">
+        {/* HERO */}
         <div className="text-center">
           <Logo size={64} />
           <h1 className="mt-4 text-5xl font-black tracking-tight">
@@ -64,6 +67,10 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* 🔥 Latest security headlines (refreshes daily) */}
+        <NewsBanner />
+
+        {/* Example share */}
         <div className="max-w-3xl mx-auto">
           <h2 className="text-xl font-semibold text-white/80 mb-3">
             Example Share Summary
@@ -74,6 +81,7 @@ export default function HomePage() {
           />
         </div>
 
+        {/* How it works */}
         <div className="grid md:grid-cols-3 gap-4">
           {[
             {
