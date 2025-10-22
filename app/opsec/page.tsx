@@ -1,3 +1,4 @@
+// app/opsec/page.tsx
 "use client";
 
 import React, { Suspense, useCallback, useMemo, useState } from "react";
@@ -30,6 +31,9 @@ function OpsecClient() {
   const [showDiag, setShowDiag] = useState(false);
 
   const disabled = loading || !q.trim();
+
+  // site base for safe fallbacks
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
 
   const analyze = useCallback(async () => {
     const query = q.trim();
@@ -326,21 +330,31 @@ function OpsecClient() {
                 <span className="text-xs text-white/50">
                   Sources: BaseScan, GoPlus, DEX Screener, Honeypot
                 </span>
-                <div className="self-start md:self-auto">
-                  <ShareRow
-                    token={r.symbol ?? r.name ?? r.address}
-                    grade={r.grade}
-                    liquidityUSD={
-                      typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined
-                    }
-                    topHolderPct={
-                      typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined
-                    }
-                    buySellRatio={r.metrics.buySellRatio}
-                    url={r.permalink}
-                    image={r.imageUrl}
-                  />
-                </div>
+
+                {/* Safe fallbacks for ShareRow props to satisfy strict string types */}
+                {(() => {
+                  const safeName = encodeURIComponent(r.symbol ?? r.name ?? "Token");
+                  const safeUrl = r.permalink || `${site}/opsec/${r.address}`;
+                  const safeImage = r.imageUrl || `${site}/api/opsec/og?grade=${r.grade}&name=${safeName}`;
+
+                  return (
+                    <div className="self-start md:self-auto">
+                      <ShareRow
+                        token={r.symbol ?? r.name ?? r.address}
+                        grade={r.grade}
+                        liquidityUSD={
+                          typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined
+                        }
+                        topHolderPct={
+                          typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined
+                        }
+                        buySellRatio={r.metrics.buySellRatio}
+                        url={safeUrl}
+                        image={safeImage}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Diagnostics (only if ?debug=1) */}
