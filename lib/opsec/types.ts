@@ -1,49 +1,33 @@
-// lib/opsec/types.ts
-export type Finding = {
-  key: string;
-  ok: boolean;
-  weight: number;
-  note: string;
+// lib/opsec/types.ts (additions)
+export type SourceKey =
+  | "basescan"
+  | "dexscreener"
+  | "geckoterminal"
+  | "goplus"
+  | "honeypot"
+  | "coingecko"
+  | "twitter"
+  | "github"
+  | "website";
+
+export type SourceStatus = {
+  key: SourceKey;
+  label: string;
+  ok: boolean | null;         // true=good, false=bad, null=unknown/unavailable
+  note?: string;              // brief explanation
+  latencyMs?: number;         // optional, for debug/UX
 };
 
-export type Metrics = {
-  liquidityUSD?: number;
-  topHolderPct?: number;
-  buySellRatio?: string;    // "∞" or "0.85" etc
-  volume24hUSD?: number;
-  fdvUSD?: number;
-  lpLockedPct?: number;
+export type RiskBadge = {
+  key: string;                // e.g. "owner_privs", "unverified", "thin_liquidity"
+  level: "info" | "warn" | "high";
+  text: string;               // short user-facing sentence
 };
 
-export type Sources = {
-  basescan: string;
-  goplus: string;
-  dexscreener: string;
-  honeypot: string;
-  coingecko?: string;       // NEW (optional)
-};
-
-export type Socials = {
-  website?: string;
-  twitter?: string;
-  telegram?: string;
-  github?: string;
-  warpcast?: string;
-  coingecko?: string;
-};
-
-export type OpSecReport = {
-  address: string;
-  chainId: number;
-  name?: string;
-  symbol?: string;
-  score: number;
-  grade: "A" | "B" | "C" | "D" | "F";
-  summary: Finding[];
-  findings: Finding[];
-  metrics: Metrics;
-  imageUrl: string;
-  permalink: string;
-  sources: Sources;
-  socials?: Socials;        // NEW (optional)
-};
+export interface OpSecReport {
+  // ... existing fields ...
+  coverage?: number;          // 0–100: how much of the planned checks had data
+  confidence?: "low" | "med" | "high";
+  sourcesTable?: SourceStatus[];
+  riskBadges?: RiskBadge[];
+}
