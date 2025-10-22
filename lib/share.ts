@@ -12,7 +12,7 @@ export const FARCASTER_MINIAPP_LINK =
  */
 export const SHARE_IMAGE_URL =
   (process.env.NEXT_PUBLIC_SHARE_IMAGE_URL?.trim() ||
-    "https://opsec-mini.vercel.app/opsec-report-banner.png").replace(/(?<=\S)\/+$/,"");
+    "https://opsec-mini.vercel.app/opsec-report-banner.PNG").replace(/(?<=\S)\/+$/,"");
 
 /* ---------- Randomized, neutral short phrases ---------- */
 const MESSAGES = [
