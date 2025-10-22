@@ -7,6 +7,7 @@ import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
 
+/* ---------- types that mirror your API shape ---------- */
 type SourceBlock =
   | {
       ok: true;
@@ -29,15 +30,15 @@ type SourceBlock =
       gas?: { buy?: number | string; sell?: number | string };
     }
   | {
-      ok: true;
-      source: "Dexscreener";
-      pairUrl?: string;
-      baseToken?: string;
-      quoteToken?: string;
-      liquidityUSD?: number;
-      volume24h?: number;
-      priceUSD?: number | string;
-    }
+    ok: true;
+    source: "Dexscreener";
+    pairUrl?: string;
+    baseToken?: string;
+    quoteToken?: string;
+    liquidityUSD?: number;
+    volume24h?: number;
+    priceUSD?: number | string;
+  }
   | { ok: false; source: string; error?: string };
 
 type ApiResponse = {
@@ -45,8 +46,51 @@ type ApiResponse = {
   summary: string;
   sources: SourceBlock[];
   fetchedAt: string;
+  name?: string;
+  symbol?: string;
 };
 
+/* ---------- helpers ---------- */
+const anybreak = "break-all [word-break:anywhere]";
+const mono = "font-mono text-white/90";
+
+function pct(n?: number | string | null) {
+  const v = Number(n);
+  return Number.isFinite(v) ? `${Math.max(0, v).toFixed(0)}%` : "—";
+}
+function pillTone(n: number | null | undefined): "ok" | "warn" | "bad" | "muted" {
+  if (n == null || !Number.isFinite(+n)) return "muted";
+  const v = +n;
+  if (v <= 0) return "ok";
+  if (v <= 10) return "warn";
+  return "bad";
+}
+function Pill({ tone, children }: { tone: "ok" | "warn" | "bad" | "muted"; children: React.ReactNode }) {
+  const cx =
+    tone === "ok"
+      ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/20"
+      : tone === "warn"
+      ? "bg-yellow-500/10 text-yellow-300 border-yellow-400/20"
+      : tone === "bad"
+      ? "bg-red-500/10 text-red-300 border-red-400/20"
+      : "bg-white/5 text-white/70 border-white/10";
+  return <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs ${cx}`}>{children}</span>;
+}
+const TaxPill = ({ label, v }: { label: string; v?: number | string | null }) => {
+  const n = Number(v);
+  return (
+    <Pill tone={pillTone(Number.isFinite(n) ? n : null)}>
+      <span className="opacity-80">{label}:</span> <strong className="font-medium">{pct(v)}</strong>
+    </Pill>
+  );
+};
+const GatePill = ({ label, ok }: { label: string; ok?: boolean | null }) => (
+  <Pill tone={ok === true ? "ok" : ok === false ? "bad" : "muted"}>
+    {label}: <strong className="font-medium">{ok === true ? "OK" : ok === false ? "Blocked" : "—"}</strong>
+  </Pill>
+);
+
+/* ---------- data fetch ---------- */
 async function getAggregated(addr: string): Promise<ApiResponse> {
   const base = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
   const r = await fetch(`${base}/api/opsec/analyze?query=${addr}`, {
@@ -58,17 +102,23 @@ async function getAggregated(addr: string): Promise<ApiResponse> {
   return r.json();
 }
 
-/** Dynamic per-token metadata: OG/Twitter/Farcaster with shareable summary */
+/** Dynamic per-token metadata with shareable summary OG */
 export async function generateMetadata(
   { params }: { params: { address: string } }
 ): Promise<Metadata> {
   try {
     const data = await getAggregated(params.address);
-    const short = `${params.address.slice(0, 6)}…${params.address.slice(-4)}`;
-    const title = `OpSec — ${short} (Base)`;
+    const ds = Array.isArray(data.sources)
+      ? (data.sources.find((s: any) => s?.source === "Dexscreener" && s?.ok) as any)
+      : null;
+    const token = (data.symbol || data.name || ds?.baseToken || `${params.address.slice(0, 6)}…${params.address.slice(-4)}`)
+      .toString()
+      .toUpperCase();
+
+    const title = `OpSec — ${token}`;
     const desc = data.summary;
     const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-    const ogImage = `${site}/api/opsec/og?name=${encodeURIComponent(short)}&summary=${encodeURIComponent(
+    const ogImage = `${site}/api/opsec/og?name=${encodeURIComponent(token)}&summary=${encodeURIComponent(
       (data.summary || "").slice(0, 140)
     )}`;
     const url = `${site}/opsec/${params.address}`;
@@ -112,7 +162,12 @@ export async function generateMetadata(
 
 export default async function Page({ params }: { params: { address: string } }) {
   const data = await getAggregated(params.address);
-  const short = `${params.address.slice(0, 6)}…${params.address.slice(-4)}`;
+  const ds = Array.isArray(data.sources)
+    ? (data.sources.find((s: any) => s?.source === "Dexscreener" && s?.ok) as any)
+    : null;
+  const token = (data.symbol || data.name || ds?.baseToken || `${params.address.slice(0, 6)}…${params.address.slice(-4)}`)
+    .toString()
+    .toUpperCase();
 
   return (
     <AgencyChrome>
@@ -132,8 +187,8 @@ export default async function Page({ params }: { params: { address: string } }) 
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="text-center md:text-left">
-              <div className="text-xl font-bold break-all font-mono">{short}</div>
-              <div className="text-white/60 text-sm break-all font-mono">{params.address}</div>
+              <div className="text-xl font-black">{token}</div>
+              <div className={`${mono} ${anybreak}`}>{params.address}</div>
             </div>
           </div>
 
@@ -141,7 +196,7 @@ export default async function Page({ params }: { params: { address: string } }) 
           <div className="mt-5 rounded-xl border border-white/10 p-4 bg-white/[0.03]">
             <h3 className="font-semibold mb-2">Summary</h3>
             <div className="text-sm text-white/80 font-mono">{data.summary}</div>
-            <ShareSummary summary={data.summary} address={data.address} />
+            <ShareSummary summary={data.summary} address={data.address} name={token} />
           </div>
 
           {/* Sources */}
@@ -150,7 +205,7 @@ export default async function Page({ params }: { params: { address: string } }) 
               <div key={i} className="rounded-xl border border-white/10 p-4 bg-white/[0.03]">
                 <h3 className="font-semibold text-sky-300">{src.source}</h3>
                 {"ok" in src && !src.ok && (
-                  <p className="text-red-400 mt-1">⚠️ Error fetching data {src.error ? `— ${src.error}` : ""}</p>
+                  <p className="text-red-400 mt-1">⚠️ Error fetching data {"error" in src && src.error ? `— ${src.error}` : ""}</p>
                 )}
 
                 {src.source === "GoPlus" && "ok" in src && src.ok && (
@@ -158,21 +213,29 @@ export default async function Page({ params }: { params: { address: string } }) 
                     <p>Proxy: {src.proxy ? "⚠️ Yes" : "✅ No"}</p>
                     <p>Blacklist: {src.blacklist ? "⚠️ Yes" : "✅ None"}</p>
                     <p>Mintable: {src.mintable ? "⚠️ Yes" : "✅ No"}</p>
-                    <p>Owner: {src.owner ?? "Unknown"}</p>
-                    <p>Taxes: {src.taxes?.buy ?? "?"}% / {src.taxes?.sell ?? "?"}%</p>
+                    <p className={`${mono} ${anybreak}`}>Owner: {src.owner ?? "Unknown"}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <TaxPill label="Buy tax" v={src.taxes?.buy} />
+                      <TaxPill label="Sell tax" v={src.taxes?.sell} />
+                    </div>
                   </div>
                 )}
 
                 {src.source === "Honeypot.is" && "ok" in src && src.ok && (
-                  <div className="mt-2 text-sm space-y-1">
+                  <div className="mt-2 text-sm space-y-2">
                     <p>Risk: {src.verdict ?? "—"}</p>
                     <p>Honeypot: {src.honeypot ? "⚠️ Yes" : "✅ No"}</p>
-                    <p>
-                      Buy/Sell: {src.trading?.canBuy ? "✅" : "❌"} / {src.trading?.canSell ? "✅" : "❌"}
+                    <div className="flex flex-wrap gap-1.5">
+                      <GatePill label="Buy" ok={src.trading?.canBuy} />
+                      <GatePill label="Sell" ok={src.trading?.canSell} />
+                      <TaxPill label="Buy tax" v={src.taxes?.buy} />
+                      <TaxPill label="Sell tax" v={src.taxes?.sell} />
+                      {src.taxes?.transfer != null && <TaxPill label="Transfer" v={src.taxes?.transfer} />}
+                    </div>
+                    <p className="text-xs text-white/50">
+                      Gas (buy/sell): {src.gas?.buy ?? "—"} / {src.gas?.sell ?? "—"}
                     </p>
-                    <p>Taxes: {src.taxes?.buy ?? "?"}% / {src.taxes?.sell ?? "?"}%</p>
-                    <p>Gas (buy/sell): {src.gas?.buy ?? "?"} / {src.gas?.sell ?? "?"}</p>
-                    {src.reason && <p className="text-white/60">Reason: {src.reason}</p>}
+                    {"reason" in src && src.reason && <p className="text-white/60">Reason: {src.reason}</p>}
                   </div>
                 )}
 
