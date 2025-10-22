@@ -25,17 +25,20 @@ export default function ShareSummary({
       : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
   const shareUrl = `${baseUrl}/opsec/${address}`;
 
+  // Uppercased token label for display
   const token = (name || `${address.slice(0, 6)}…${address.slice(-4)}`).toString().toUpperCase();
 
+  // Cashtag (no space) for share text. Only add `$` for plain ticker-like tokens.
+  const cashtag = /^[A-Z0-9]{2,15}$/.test(token) ? `$${token}` : token;
+
   // Build our OG summary card URL for the embed (single image)
-  // If your /api/opsec/og supports ?name&summary, this will render that card.
   const ogEmbed =
     image ||
     `${baseUrl}/api/opsec/og?name=${encodeURIComponent(token)}&summary=${encodeURIComponent(
       (summary || "").slice(0, 220)
     )}`;
 
-  const tweet = `${token} — ${summary}\n\n🔍 via OpSec (on Base)\n${shareUrl}`;
+  const tweet = `${cashtag} — ${summary}\n\n🔍 via OpSec (on Base)\n${shareUrl}`;
 
   const shareToX = () =>
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet)}`, "_blank");
@@ -56,7 +59,7 @@ export default function ShareSummary({
 
         {/* Farcaster: always one embed (the summary OG) */}
         <ShareToFarcasterButton
-          text={`${token} — quick security summary`}
+          text={`${cashtag} — quick security summary`}
           embed={ogEmbed}
           url={shareUrl}
         >
