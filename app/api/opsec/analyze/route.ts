@@ -1,7 +1,12 @@
-// app/api/opsec/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { isAddress, type Address } from "viem";
-import { fetchBaseScan, fetchGoPlus, fetchHoneypot, fetchMarkets, fetchSocials } from "@/lib/opsec/sources";
+import {
+  fetchBaseScan,
+  fetchGoPlus,
+  fetchHoneypot,
+  fetchMarkets,
+  fetchSocials,
+} from "@/lib/opsec/sources";
 import { computeReport } from "@/lib/opsec/score";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +52,15 @@ export async function GET(req: NextRequest) {
     ];
 
     const payload = debug ? { ...report, upstreamDiagnostics, debug: true } : report;
-    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
+
+    return NextResponse.json(payload, {
+      headers: {
+        // make sure nothing is cached by edges/browsers
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+      },
+    });
   } catch (e: any) {
     console.error("[/api/opsec/analyze] fatal", e);
     return NextResponse.json(
