@@ -1,29 +1,37 @@
+// app/api/opsec/analyze/route.ts
 import { NextResponse } from "next/server";
 import { isAddress, type Address } from "viem";
-import { fetchGoPlus, fetchHoneypot } from "@/lib/opsec/sources";
+import { fetchGoPlus, fetchHoneypot, fetchAdditionalRisk } from "@/lib/opsec/sources";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 45;
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const query = searchParams.get("query")?.trim();
-  if (!query || !isAddress(query)) {
-    return NextResponse.json({ error: "Invalid Base token address (0x…)" }, { status: 400 });
+  const qRaw = (searchParams.get("query") || "").trim();
+  if (!qRaw || !isAddress(qRaw)) {
+    return NextResponse.json({ error: "Please provide a valid Base token contract address (0x…)" }, { status: 400 });
   }
+  const address = qRaw as Address;
 
-  const address = query as Address;
-
-  const [goplus, honeypot] = await Promise.allSettled([
+  const results = await Promise.allSettled([
     fetchGoPlus(address),
     fetchHoneypot(address),
+    fetchAdditionalRisk(address),
   ]);
 
-  const summary = [
-    { source: "GoPlus", data: goplus.status === "fulfilled" ? goplus.value : { error: goplus.reason } },
-    { source: "Honeypot.is", data: honeypot.status === "fulfilled" ? honeypot.value : { error: honeypot.reason } },
-  ];
+  const summary = results.map((r) => {
+    if (r.status === "fulfilled") {
+      return r.value;
+    } else {
+      return { source: "Unknown", data: {}, error: String(r.reason) };
+    }
+  });
 
   return NextResponse.json({
     address,
     fetchedAt: new Date().toISOString(),
     summary,
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }
