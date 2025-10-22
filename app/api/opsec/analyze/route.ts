@@ -1,71 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
-import { isAddress, type Address } from "viem";
-import {
-  fetchBaseScan,
-  fetchGoPlus,
-  fetchHoneypot,
-  fetchMarkets,
-  fetchSocials,
-} from "@/lib/opsec/sources";
-import { computeReport } from "@/lib/opsec/score";
+// app/api/opsec/analyze/route.ts
+import { NextResponse } from "next/server";
+import { fetchBaseScan, fetchDexScreener, fetchGoPlus, fetchHoneypot } from "@/lib/opsec/sources";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-/** Vercel/Next: allow up to 45s for this route */
-export const maxDuration = 45;
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const query = searchParams.get("query");
+  if (!query) return NextResponse.json({ error: "Missing query" }, { status: 400 });
 
-export async function GET(req: NextRequest) {
-  const qRaw = (req.nextUrl.searchParams.get("query") || "").trim();
-  const debug = req.nextUrl.searchParams.get("debug") === "1";
+  const [basescan, dexscreener, goplus, honeypot] = await Promise.allSettled([
+    fetchBaseScan(query),
+    fetchDexScreener(query),
+    fetchGoPlus(query),
+    fetchHoneypot(query),
+  ]);
 
-  if (!qRaw || !isAddress(qRaw)) {
-    return NextResponse.json(
-      { error: "Please provide a valid Base token contract address (0x…).", debug },
-      { status: 400 }
-    );
-  }
-  const address = qRaw as Address;
+  const summary = [
+    { source: "BaseScan", verdict: basescan.value?.verdict ?? "—", note: basescan.value?.note },
+    { source: "DEX Screener", verdict: dexscreener.value?.verdict ?? "—", note: dexscreener.value?.note },
+    { source: "GoPlus", verdict: goplus.value?.verdict ?? "—", note: goplus.value?.note },
+    { source: "Honeypot.is", verdict: honeypot.value?.verdict ?? "—", note: honeypot.value?.note },
+  ];
 
-  try {
-    const [bs, markets, gp, hp, socials] = await Promise.all([
-      fetchBaseScan(address),
-      fetchMarkets(address),
-      fetchGoPlus(address),
-      fetchHoneypot(address),
-      fetchSocials(address),
-    ]);
-
-    const report = await computeReport(address, { bs, markets, gp, hp, socials } as any);
-
-    const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-    report.imageUrl = `${site}/api/opsec/og?grade=${report.grade}&name=${encodeURIComponent(
-      report.symbol ?? report.name ?? "Token"
-    )}`;
-    report.permalink = `${site}/opsec/${address}`;
-
-    const upstreamDiagnostics = [
-      ...(bs?._diagnostics ?? []),
-      ...(markets?._diagnostics ?? []),
-      ...(gp?._diagnostics ?? []),
-      ...(hp?._diagnostics ?? []),
-      ...(socials?._diagnostics ?? []),
-    ];
-
-    const payload = debug ? { ...report, upstreamDiagnostics, debug: true } : report;
-
-    return NextResponse.json(payload, {
-      headers: {
-        // make sure nothing is cached by edges/browsers
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-        "CDN-Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
-      },
-    });
-  } catch (e: any) {
-    console.error("[/api/opsec/analyze] fatal", e);
-    return NextResponse.json(
-      { error: "internal_error", message: e?.message ?? "Unexpected failure" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({
+    address: query,
+    updated: new Date().toISOString(),
+    summary: summary.filter(x => x.verdict !== "—"),
+  });
 }
