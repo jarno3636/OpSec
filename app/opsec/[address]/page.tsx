@@ -1,4 +1,5 @@
 // app/opsec/[address]/page.tsx
+import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import AgencyChrome from "@/components/AgencyChrome";
@@ -30,8 +31,10 @@ export async function generateMetadata(
     const report = await getReport(params.address);
     const title = `${report.symbol ?? report.name ?? "Token"} — Grade ${report.grade} | OpSec`;
     const desc = `OpSec report for ${report.symbol ?? report.name ?? report.address} on Base. Score ${report.score}/100. Liquidity $${(report.metrics.liquidityUSD ?? 0).toLocaleString()}.`;
-    const ogImage = report.imageUrl || `${process.env.NEXT_PUBLIC_SITE_URL}/icon-1200x630.png`;
-    const url = report.permalink || `${process.env.NEXT_PUBLIC_SITE_URL}/opsec/${params.address}`;
+    const ogImage =
+      report.imageUrl || `${process.env.NEXT_PUBLIC_SITE_URL}/icon-1200x630.png`;
+    const url =
+      report.permalink || `${process.env.NEXT_PUBLIC_SITE_URL}/opsec/${params.address}`;
 
     return {
       title,
@@ -72,10 +75,13 @@ export async function generateMetadata(
 export default async function Page({ params }: { params: { address: string } }) {
   const r = await getReport(params.address);
 
-  // ✅ Provide safe fallbacks for required ShareRow strings
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+  // ✅ Provide safe, precomputed strings (avoids nested templates in JSX)
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+  const displayName = (r.symbol ?? r.name ?? "Token").toString();
+  const safeName = encodeURIComponent(displayName);
   const safeUrl = r.permalink || `${site}/opsec/${params.address}`;
-  const safeImage = r.imageUrl || `${site}/api/opsec/og?grade=${r.grade}&name=${encodeURIComponent(r.symbol ?? r.name ?? "Token")}`;
+  const safeImage =
+    r.imageUrl || `${site}/api/opsec/og?grade=${r.grade}&name=${safeName}`;
 
   return (
     <AgencyChrome>
@@ -162,11 +168,19 @@ export default async function Page({ params }: { params: { address: string } }) 
                 <ShareRow
                   token={r.symbol ?? r.name ?? r.address}
                   grade={r.grade}
-                  liquidityUSD={typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined}
-                  topHolderPct={typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined}
+                  liquidityUSD={
+                    typeof r.metrics.liquidityUSD === "number"
+                      ? r.metrics.liquidityUSD
+                      : undefined
+                  }
+                  topHolderPct={
+                    typeof r.metrics.topHolderPct === "number"
+                      ? r.metrics.topHolderPct
+                      : undefined
+                  }
                   buySellRatio={r.metrics.buySellRatio}
-                  url={safeUrl}      {/* <- fixed */}
-                  image={safeImage}  {/* <- fixed */}
+                  url={safeUrl}
+                  image={safeImage}
                 />
               </div>
             </div>
