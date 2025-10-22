@@ -13,17 +13,12 @@ export const dynamic = "force-dynamic";
 async function getReport(addr: string): Promise<OpSecReport> {
   const base = process.env.NEXT_PUBLIC_SITE_URL || "";
   const r = await fetch(`${base}/api/opsec/analyze?query=${addr}`, {
-    // always fetch fresh
     cache: "no-store",
-    // tiny defense against stuck proxies
     next: { revalidate: 0 },
   });
 
   if (r.status === 404) notFound();
-  if (!r.ok) {
-    // Let Next render the error boundary/page for non-404 errors
-    throw new Error(`Failed to fetch report (${r.status})`);
-  }
+  if (!r.ok) throw new Error(`Failed to fetch report (${r.status})`);
   return r.json();
 }
 
@@ -55,7 +50,6 @@ export async function generateMetadata(
         images: [ogImage],
       },
       other: {
-        // Farcaster frame vNext hint (kept minimal; your /api/opsec/og already supplies image)
         "fc:frame": "vNext",
         "fc:frame:image": ogImage,
         "fc:frame:button:1": "Open in OpSec",
@@ -64,7 +58,6 @@ export async function generateMetadata(
       },
     };
   } catch {
-    // On failure, fall back to a generic meta
     const fallback = `${process.env.NEXT_PUBLIC_SITE_URL}/icon-1200x630.png`;
     return {
       title: "OpSec — Token Report",
@@ -78,6 +71,11 @@ export async function generateMetadata(
 
 export default async function Page({ params }: { params: { address: string } }) {
   const r = await getReport(params.address);
+
+  // ✅ Provide safe fallbacks for required ShareRow strings
+  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+  const safeUrl = r.permalink || `${site}/opsec/${params.address}`;
+  const safeImage = r.imageUrl || `${site}/api/opsec/og?grade=${r.grade}&name=${encodeURIComponent(r.symbol ?? r.name ?? "Token")}`;
 
   return (
     <AgencyChrome>
@@ -167,8 +165,8 @@ export default async function Page({ params }: { params: { address: string } }) 
                   liquidityUSD={typeof r.metrics.liquidityUSD === "number" ? r.metrics.liquidityUSD : undefined}
                   topHolderPct={typeof r.metrics.topHolderPct === "number" ? r.metrics.topHolderPct : undefined}
                   buySellRatio={r.metrics.buySellRatio}
-                  url={r.permalink}
-                  image={r.imageUrl}
+                  url={safeUrl}      {/* <- fixed */}
+                  image={safeImage}  {/* <- fixed */}
                 />
               </div>
             </div>
