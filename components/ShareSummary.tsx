@@ -27,12 +27,8 @@ export default function ShareSummary({
 
   // Build our OG image for the composer embed (single, absolute URL)
   const ogEmbed =
-    image ||
-    buildSummaryOg({
-      name: TOKEN,                               // big headline on card
-      summary: (summary || "").slice(0, 220),    // safe length
-      baseUrl: base,
-    });
+  image ||
+  `${buildSummaryOg({ name: TOKEN, summary: (summary || "").slice(0,220), baseUrl: base })}&v=${Date.now()}`;
 
   const tweet = `${CASH_TAG} — ${summary}\n\n🔍 via OpSec (on Base)\n${shareUrl}`;
 
