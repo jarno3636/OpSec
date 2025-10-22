@@ -1,11 +1,10 @@
-// lib/share.ts
 import { composeCast } from "./miniapp";
 
 /* ---------- Config ---------- */
 const FARCASTER_MINIAPP_LINK =
   process.env.NEXT_PUBLIC_FC_MINIAPP_LINK ||
-  process.env.NEXT_PUBLIC_FC_MINIAPP_URL || // either works
-  "https://warpcast.com/~/developers/mini-apps"; // harmless default
+  process.env.NEXT_PUBLIC_FC_MINIAPP_URL ||
+  "https://warpcast.com/~/developers/mini-apps";
 
 /* ---------- URL + env helpers ---------- */
 function siteOrigin(): string {
@@ -68,10 +67,13 @@ function isSameOrigin(urlA: string, urlB: string) {
   }
 }
 
+/** Normalize embeds and enforce a SINGLE embed. */
 function normEmbeds(embeds?: string | string[]): string[] {
   if (!embeds) return [];
   const list = Array.isArray(embeds) ? embeds : [embeds];
-  return list.map((e) => safeUrl(e)).filter(Boolean) as string[];
+  const first = list.find(Boolean);
+  const url = first ? safeUrl(first) : "";
+  return url ? [url] : [];
 }
 
 /** Prefer the mini link when we’re inside Warpcast and the URL is same-origin. */
@@ -83,8 +85,7 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   if (/^https:\/\/warpcast\.com\/~\/compose/i.test(canonical)) return canonical;
 
   const inWarpcast = isInFarcasterEnv() || forceMini;
-  const MINI_BASE =
-    process.env.NEXT_PUBLIC_FC_MINIAPP_URL || FARCASTER_MINIAPP_LINK;
+  const MINI_BASE = process.env.NEXT_PUBLIC_FC_MINIAPP_URL || FARCASTER_MINIAPP_LINK;
 
   if (!MINI_BASE || !inWarpcast) return canonical;
   if (!isSameOrigin(canonical, siteOrigin())) return canonical;
@@ -102,7 +103,7 @@ export function preferMiniUrlIfPossible(webUrl: string, { forceMini = false } = 
   }
 }
 
-/** Warpcast web composer URL (note: we never inject the URL into text). */
+/** Warpcast web composer URL (we pass only ONE embed). */
 export function buildWarpcastCompose({
   url = "",
   text = "",
@@ -113,33 +114,33 @@ export function buildWarpcastCompose({
   embeds?: string[];
 }) {
   const wcText = (text || "").trim();
-  const embedList = normEmbeds(embeds);
+  const singleEmbed = normEmbeds(embeds);
   const base = "https://warpcast.com/~/compose";
   const params = new URLSearchParams();
   if (wcText) params.set("text", wcText);
-  for (const e of embedList) params.append("embeds[]", e);
+  if (singleEmbed[0]) params.append("embeds[]", singleEmbed[0]); // only one
   return `${base}?${params.toString()}`;
 }
 
-/** Try SDK compose in Warpcast; else open web composer. */
+/** Try SDK compose in Warpcast; else open web composer. Always one embed. */
 export async function shareOrCast({
   text = "",
   embeds = [],
   url = "",
 }: {
   text?: string;
-  embeds?: string[];
+  embeds?: string[]; // we will reduce to 1
   url?: string;
 }) {
-  const fullText = (text || "").trim(); // never append url to text
-  const embedList = normEmbeds(embeds);
+  const fullText = (text || "").trim();
+  const singleEmbed = normEmbeds(embeds);
 
   if (isInFarcasterEnv()) {
-    const ok = await (composeCast as any)({ text: fullText, embeds: embedList });
+    const ok = await (composeCast as any)({ text: fullText, embeds: singleEmbed });
     return !!ok;
   }
 
-  const href = buildWarpcastCompose({ text: fullText, url, embeds: embedList });
+  const href = buildWarpcastCompose({ text: fullText, url, embeds: singleEmbed });
   try {
     const w = window.open(href, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = href;
