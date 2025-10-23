@@ -8,8 +8,6 @@ type Story = {
   link: string;
   description?: string;
   publishedAt?: string | null;
-  sourceName?: string;
-  sourceDomain?: string;
 };
 
 export default function NewsBanner() {
@@ -35,7 +33,7 @@ export default function NewsBanner() {
     return () => { alive = false; };
   }, []);
 
-  // Snap/scroll position → active dot
+  // Snap/scroll position → active dot (accounts for gutters)
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -45,9 +43,9 @@ export default function NewsBanner() {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        const { scrollLeft, clientWidth } = el;
-        const idx = Math.round(scrollLeft / Math.max(1, clientWidth));
-        setActive(idx);
+        const slideW = el.clientWidth; // we size slides proportional to this
+        const idx = Math.round((el.scrollLeft + slideW * 0.1) / slideW);
+        setActive(Math.max(0, Math.min(idx, stories.length - 1)));
         ticking = false;
       });
     };
@@ -81,13 +79,13 @@ export default function NewsBanner() {
   }, [loading, stories.length]);
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/[0.04] overflow-hidden">
+    <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 md:p-6">
       {/* Header */}
-      <div className="px-5 md:px-6 py-4 md:py-5 border-b border-white/10 bg-white/[0.03] flex items-end justify-between">
+      <div className="mb-4 md:mb-5 flex items-end justify-between">
         <div>
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight leading-none">
+          <div className="text-2xl md:text-3xl font-extrabold tracking-tight">
             Latest Security Headlines <span className="text-scan">/ Daily</span>
-          </h2>
+          </div>
           <div className="mt-1 text-xs md:text-sm text-white/60">{headerSubtitle}</div>
         </div>
 
@@ -118,27 +116,40 @@ export default function NewsBanner() {
         ref={scrollerRef}
         className="
           hide-scrollbar
-          -mx-5 md:-mx-6 px-5 md:px-6
           overflow-x-auto
           scroll-smooth
           snap-x snap-mandatory
-          flex gap-4 md:gap-6
+          flex items-stretch
+          gap-4 md:gap-6
+          px-4 md:px-6
         "
         style={{ msOverflowStyle: "none" }}
       >
         {/* hide webkit scrollbar */}
-        <style>{`.hide-scrollbar::-webkit-scrollbar{ display: none; }`}</style>
+        <style>{`.hide-scrollbar::-webkit-scrollbar{ display:none; }`}</style>
+
+        {/* Leading spacer to create edge buffer */}
+        <div
+          aria-hidden
+          className="shrink-0"
+          style={{ minWidth: "0.5rem" }} /* ~8px buffer */
+        />
 
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
               className="
-                snap-start shrink-0
-                w-full min-w-full
+                snap-center
+                shrink-0
                 rounded-2xl border border-white/10 bg-white/[0.05]
-                h-40 md:h-44 animate-pulse
+                h-40 md:h-44
+                animate-pulse
               "
+              style={{
+                /* Each slide is a bit narrower than viewport to leave visible gutters */
+                minWidth: "calc(100% - 2rem)", // 32px gutter total
+              }}
             />
           ))
         ) : stories.length === 0 ? (
@@ -152,54 +163,53 @@ export default function NewsBanner() {
               rel="noreferrer"
               className="
                 group
-                snap-start shrink-0
-                w-full min-w-full
+                snap-center
+                shrink-0
                 rounded-2xl border border-white/10 bg-white/[0.03]
-                p-4 md:p-5 hover:bg-white/[0.06] transition
+                p-4 md:p-5
+                hover:bg-white/[0.06] transition
               "
+              style={{
+                minWidth: "calc(100% - 2rem)",
+              }}
             >
-              <div className="flex items-center gap-2 text-[11px] md:text-xs text-white/60 mb-1">
-                {s.sourceDomain && (
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(s.sourceDomain)}&sz=64`}
-                    alt=""
-                    width={16}
-                    height={16}
-                    className="inline-block rounded-[3px] opacity-80"
-                  />
-                )}
-                <span className="uppercase tracking-wide">{s.sourceName || s.sourceDomain}</span>
-                {s.publishedAt && (
-                  <span className="opacity-60">
-                    • {new Date(s.publishedAt).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-
-              <h3 className="text-base md:text-lg font-semibold leading-snug group-hover:underline">
+              <div className="text-base md:text-lg font-semibold group-hover:underline">
                 {s.title || "Untitled"}
-              </h3>
-
+              </div>
               {s.description && (
                 <p className="mt-2 text-sm text-white/70 line-clamp-3">
                   {s.description}
                 </p>
               )}
+              {s.publishedAt && (
+                <div className="mt-3 text-[11px] text-white/40">
+                  {new Date(s.publishedAt).toLocaleString()}
+                </div>
+              )}
             </a>
           ))
         )}
+
+        {/* Trailing spacer to mirror the leading buffer */}
+        <div
+          aria-hidden
+          className="shrink-0"
+          style={{ minWidth: "0.5rem" }}
+        />
       </div>
 
       {/* Dots */}
       {stories.length > 1 && (
-        <div className="mt-4 pb-4 flex items-center justify-center gap-2">
+        <div className="mt-4 flex items-center justify-center gap-2">
           {stories.map((_, i) => (
             <button
               key={i}
               onClick={() => goTo(i)}
               aria-label={`Go to slide ${i + 1}`}
               className={`h-2.5 w-2.5 rounded-full transition ${
-                i === active ? "bg-scan shadow-[0_0_12px_rgba(0,255,149,0.6)]" : "bg-white/25 hover:bg-white/40"
+                i === active
+                  ? "bg-scan shadow-[0_0_12px_rgba(0,255,149,0.6)]"
+                  : "bg-white/25 hover:bg-white/40"
               }`}
             />
           ))}
