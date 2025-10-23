@@ -16,6 +16,14 @@ export default function NewsBanner() {
   const [active, setActive] = useState(0);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
+  // Helper: decode basic HTML entities in some RSS titles/descriptions
+  const decode = (s: string) => {
+    if (!s) return s;
+    const el = document.createElement("textarea");
+    el.innerHTML = s;
+    return el.value;
+  };
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -24,13 +32,21 @@ export default function NewsBanner() {
         const r = await fetch("/api/news", { cache: "no-store" });
         const j = await r.json().catch(() => ({}));
         if (alive && Array.isArray(j?.stories)) {
-          setStories(j.stories.slice(0, 10));
+          setStories(
+            j.stories.slice(0, 10).map((x: Story) => ({
+              ...x,
+              title: decode(x.title || ""),
+              description: decode(x.description || ""),
+            }))
+          );
         }
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // Snap/scroll position → active dot (accounts for gutters)
@@ -38,13 +54,15 @@ export default function NewsBanner() {
     const el = scrollerRef.current;
     if (!el) return;
 
+    const GUTTER = 24; // must match the calc() below
     let ticking = false;
+
     const onScroll = () => {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        const slideW = el.clientWidth; // we size slides proportional to this
-        const idx = Math.round((el.scrollLeft + slideW * 0.1) / slideW);
+        const slideW = el.clientWidth - GUTTER;
+        const idx = Math.round((el.scrollLeft + slideW * 0.5) / slideW);
         setActive(Math.max(0, Math.min(idx, stories.length - 1)));
         ticking = false;
       });
@@ -57,8 +75,10 @@ export default function NewsBanner() {
   const goTo = (idx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
+    const GUTTER = 24;
+    const slideW = el.clientWidth - GUTTER;
     const clamped = Math.max(0, Math.min(idx, stories.length - 1));
-    el.scrollTo({ left: clamped * el.clientWidth, behavior: "smooth" });
+    el.scrollTo({ left: clamped * slideW, behavior: "smooth" });
   };
 
   const prev = () => goTo(active - 1);
@@ -121,35 +141,23 @@ export default function NewsBanner() {
           snap-x snap-mandatory
           flex items-stretch
           gap-4 md:gap-6
-          px-4 md:px-6
+          px-3 md:px-4
         "
-        style={{ msOverflowStyle: "none" }}
+        style={{
+          msOverflowStyle: "none",
+          // ensure the first/last slide have breathing room without spacers
+          scrollPaddingLeft: 12,
+          scrollPaddingRight: 12,
+        }}
       >
-        {/* hide webkit scrollbar */}
         <style>{`.hide-scrollbar::-webkit-scrollbar{ display:none; }`}</style>
-
-        {/* Leading spacer to create edge buffer */}
-        <div
-          aria-hidden
-          className="shrink-0"
-          style={{ minWidth: "0.5rem" }} /* ~8px buffer */
-        />
 
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="
-                snap-center
-                shrink-0
-                rounded-2xl border border-white/10 bg-white/[0.05]
-                h-40 md:h-44
-                animate-pulse
-              "
-              style={{
-                /* Each slide is a bit narrower than viewport to leave visible gutters */
-                minWidth: "calc(100% - 2rem)", // 32px gutter total
-              }}
+              className="snap-start shrink-0 rounded-2xl border border-white/10 bg-white/[0.05] h-40 md:h-44 animate-pulse"
+              style={{ minWidth: "calc(100% - 24px)" }} // 24px total gutter
             />
           ))
         ) : stories.length === 0 ? (
@@ -163,14 +171,16 @@ export default function NewsBanner() {
               rel="noreferrer"
               className="
                 group
-                snap-center
+                snap-start
                 shrink-0
                 rounded-2xl border border-white/10 bg-white/[0.03]
                 p-4 md:p-5
                 hover:bg-white/[0.06] transition
               "
               style={{
-                minWidth: "calc(100% - 2rem)",
+                // Slide is slightly narrower than the viewport to keep a
+                // visible gutter inside the rounded parent card.
+                minWidth: "calc(100% - 24px)",
               }}
             >
               <div className="text-base md:text-lg font-semibold group-hover:underline">
@@ -189,13 +199,6 @@ export default function NewsBanner() {
             </a>
           ))
         )}
-
-        {/* Trailing spacer to mirror the leading buffer */}
-        <div
-          aria-hidden
-          className="shrink-0"
-          style={{ minWidth: "0.5rem" }}
-        />
       </div>
 
       {/* Dots */}
