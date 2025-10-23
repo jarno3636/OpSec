@@ -17,15 +17,15 @@ export default function ShareSummary({
 }: {
   summary: string;
   address: string;
-  name?: string;   // inferred token name or symbol, optional
-  image?: string;  // optional explicit embed override
+  name?: string;
+  image?: string;
 }) {
   const base =
     typeof window !== "undefined"
       ? window.location.origin
       : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
 
-  const shareUrl = `${base}/opsec/${address}`;
+  const miniHome = base || "https://opsec-mini.vercel.app"; // single homepage link for X
   const tokenRaw = (name && String(name)) || `${address.slice(0, 6)}…${address.slice(-4)}`;
   const TOKEN = tokenRaw.toUpperCase();
   const CASH_TAG = `$${TOKEN.replace(/^\$+/, "")}`;
@@ -36,14 +36,19 @@ export default function ShareSummary({
   // pick a fresh neutral caption each render
   const caption = useMemo(() => randomShareCaption(), []);
 
-  // Text for both X + Farcaster (always includes the miniapp link)
-  const shareText = `${CASH_TAG} — ${caption}\n\n${summary}\n\n${FARCASTER_MINIAPP_LINK}`;
+  // —— TEXTS ——
+  // X: only ONE link, to the mini app homepage (no extra url param)
+  const tweetText = `${CASH_TAG} — ${caption}\n\n${summary}\n\n${miniHome}`;
+
+  // Farcaster: keep the in-app link in text so users land in the mini-app,
+  // and attach our single banner embed.
+  const castText = `${CASH_TAG} — ${caption}\n\n${summary}\n\n${FARCASTER_MINIAPP_LINK}`;
 
   const onShareX = () => {
     const href = buildTweetUrl({
-      text: shareText,
-      // NOTE: X ignores image embeds via URL params; it’ll still show link preview if any.
-      url: shareUrl,
+      text: tweetText,
+      // ⛔️ DO NOT pass a separate url param — that created the 2nd link.
+      // url: miniHome,
     });
     window.open(href, "_blank", "noopener,noreferrer");
   };
@@ -62,9 +67,9 @@ export default function ShareSummary({
           <Twitter size={16} /> Share on X
         </button>
 
-        {/* Farcaster: always ONE embed (the fixed banner) + miniapp link in text */}
+        {/* Farcaster: always ONE embed (the fixed banner) */}
         <ShareToFarcasterButton
-          text={shareText}
+          text={castText}
           embed={embedUrl}
           url={FARCASTER_MINIAPP_LINK}
         >
