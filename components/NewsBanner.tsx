@@ -16,7 +16,7 @@ export default function NewsBanner() {
   const [active, setActive] = useState(0);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
-  // Helper: decode basic HTML entities in some RSS titles/descriptions
+  // decode basic HTML entities in some RSS fields
   const decode = (s: string) => {
     if (!s) return s;
     const el = document.createElement("textarea");
@@ -49,19 +49,19 @@ export default function NewsBanner() {
     };
   }, []);
 
-  // Snap/scroll position → active dot (accounts for gutters)
+  // dot index that respects the slide width minus gutters
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
 
-    const GUTTER = 24; // must match the calc() below
     let ticking = false;
-
     const onScroll = () => {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        const slideW = el.clientWidth - GUTTER;
+        // mobile gutter total = 48px; md gutter total = 80px
+        const totalGutter = window.matchMedia("(min-width: 768px)").matches ? 80 : 48;
+        const slideW = el.clientWidth - totalGutter;
         const idx = Math.round((el.scrollLeft + slideW * 0.5) / slideW);
         setActive(Math.max(0, Math.min(idx, stories.length - 1)));
         ticking = false;
@@ -75,8 +75,8 @@ export default function NewsBanner() {
   const goTo = (idx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
-    const GUTTER = 24;
-    const slideW = el.clientWidth - GUTTER;
+    const totalGutter = window.matchMedia("(min-width: 768px)").matches ? 80 : 48;
+    const slideW = el.clientWidth - totalGutter;
     const clamped = Math.max(0, Math.min(idx, stories.length - 1));
     el.scrollTo({ left: clamped * slideW, behavior: "smooth" });
   };
@@ -139,15 +139,16 @@ export default function NewsBanner() {
           overflow-x-auto
           scroll-smooth
           snap-x snap-mandatory
+          [scroll-snap-stop:always]
           flex items-stretch
           gap-4 md:gap-6
           px-3 md:px-4
         "
         style={{
           msOverflowStyle: "none",
-          // ensure the first/last slide have breathing room without spacers
-          scrollPaddingLeft: 12,
-          scrollPaddingRight: 12,
+          // make first/last slide align with the same inner gutter
+          scrollPaddingLeft: 24,
+          scrollPaddingRight: 24,
         }}
       >
         <style>{`.hide-scrollbar::-webkit-scrollbar{ display:none; }`}</style>
@@ -156,8 +157,8 @@ export default function NewsBanner() {
           Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="snap-start shrink-0 rounded-2xl border border-white/10 bg-white/[0.05] h-40 md:h-44 animate-pulse"
-              style={{ minWidth: "calc(100% - 24px)" }} // 24px total gutter
+              className="snap-center shrink-0 rounded-2xl border border-white/10 bg-white/[0.05] h-40 md:h-44 animate-pulse
+                         w-[calc(100%-48px)] md:w-[calc(100%-80px)]"
             />
           ))
         ) : stories.length === 0 ? (
@@ -171,19 +172,15 @@ export default function NewsBanner() {
               rel="noreferrer"
               className="
                 group
-                snap-start
+                snap-center
                 shrink-0
                 rounded-2xl border border-white/10 bg-white/[0.03]
                 p-4 md:p-5
                 hover:bg-white/[0.06] transition
+                w-[calc(100%-48px)] md:w-[calc(100%-80px)]
               "
-              style={{
-                // Slide is slightly narrower than the viewport to keep a
-                // visible gutter inside the rounded parent card.
-                minWidth: "calc(100% - 24px)",
-              }}
             >
-              <div className="text-base md:text-lg font-semibold group-hover:underline">
+              <div className="text-base md:text-lg font-semibold group-hover:underline truncate">
                 {s.title || "Untitled"}
               </div>
               {s.description && (
