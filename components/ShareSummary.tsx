@@ -1,3 +1,4 @@
+// components/ShareSummary.tsx
 "use client";
 import React, { useMemo } from "react";
 import { Twitter } from "lucide-react";
@@ -30,25 +31,22 @@ export default function ShareSummary({
   const TOKEN = tokenRaw.toUpperCase();
   const CASH_TAG = `$${TOKEN.replace(/^\$+/, "")}`;
 
-  // single, absolute embed image (prefer explicit override, else our banner)
+  // one absolute embed image (prefer explicit override, else our banner)
   const embedUrl = (image || SHARE_IMAGE_URL).trim();
 
-  // pick a fresh neutral caption each render
+  // fresh neutral caption each render
   const caption = useMemo(() => randomShareCaption(), []);
 
-  // —— TEXTS ——
-  // X: only ONE link, to the mini app homepage (no extra url param)
+  // X: keep ONE link (mini app homepage) in the text
   const tweetText = `${CASH_TAG} — ${caption}\n\n${summary}\n\n${miniHome}`;
 
-  // Farcaster: keep the in-app link in text so users land in the mini-app,
-  // and attach our single banner embed.
-  const castText = `${CASH_TAG} — ${caption}\n\n${summary}\n\n${FARCASTER_MINIAPP_LINK}`;
+  // Farcaster: **no link in text** — only the embed image
+  const castText = `${CASH_TAG} — ${caption}\n\n${summary}`;
 
   const onShareX = () => {
     const href = buildTweetUrl({
       text: tweetText,
-      // ⛔️ DO NOT pass a separate url param — that created the 2nd link.
-      // url: miniHome,
+      // no separate `url` param (prevents a second link)
     });
     window.open(href, "_blank", "noopener,noreferrer");
   };
@@ -67,11 +65,11 @@ export default function ShareSummary({
           <Twitter size={16} /> Share on X
         </button>
 
-        {/* Farcaster: always ONE embed (the fixed banner) */}
+        {/* Farcaster: text without any URLs + a SINGLE banner embed */}
         <ShareToFarcasterButton
           text={castText}
           embed={embedUrl}
-          url={FARCASTER_MINIAPP_LINK}
+          // omit url prop to avoid any chance of a link being added
         >
           Cast on Farcaster
         </ShareToFarcasterButton>
